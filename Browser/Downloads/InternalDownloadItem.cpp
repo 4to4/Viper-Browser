@@ -8,8 +8,8 @@
 #include <QFileInfo>
 #include <QList>
 #include <QNetworkReply>
-
-
+#include <QDebug>
+#include <iostream>
 InternalDownloadItem::InternalDownloadItem(QNetworkReply *reply, const QString &downloadDir, bool askForFileName, bool writeOverExisting, QObject *parent) :
     QObject(parent),
     m_reply(reply),
@@ -55,6 +55,8 @@ void InternalDownloadItem::setupItem()
         fileNameDefault = QString("%1%2.%3").arg(fileNameDefault).arg((externalName.isEmpty() ? "unknown" : externalName)).arg(info.completeSuffix());
 
     QString fileName = fileNameDefault;
+
+	qDebug() << "Downloading " << fileName << " from " << m_reply->url().toString();
 
     // Create file on disk
     m_file.setFileName(fileName);

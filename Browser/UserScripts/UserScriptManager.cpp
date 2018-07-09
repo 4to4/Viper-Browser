@@ -130,6 +130,7 @@ void UserScriptManager::installScript(const QUrl &url)
         return;
 
     QNetworkRequest request;
+	request.setSslConfiguration(QSslConfiguration::defaultConfiguration());
     request.setUrl(url);
 
     DownloadManager *downloadMgr = sBrowserApplication->getDownloadManager();

@@ -13,6 +13,7 @@
 #include <QMimeDatabase>
 #include <QMimeType>
 #include <QNetworkReply>
+#include <QStyle>
 
 QMimeDatabase mimeDB;
 

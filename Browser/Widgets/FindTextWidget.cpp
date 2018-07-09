@@ -4,6 +4,7 @@
 
 #include <QPaintEvent>
 #include <QPlainTextEdit>
+#include <QStyle>
 #include <QTextCharFormat>
 #include <QTextCursor>
 #include <QTextDocument>

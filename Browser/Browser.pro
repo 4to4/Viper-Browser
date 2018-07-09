@@ -12,7 +12,10 @@ TARGET = viper-browser
 TEMPLATE = app
 DESTDIR = $$VIPER_BUILD_DIR
 
-QMAKE_CXXFLAGS += -std=c++14
+CONFIG += console network
+
+LIBS += -LC:/OpenSSL-Win64/lib -llibssl
+LIBS += -LC:/OpenSSL-Win64/lib -llibcrypto
 
 # The following define makes your compiler emit warnings if you use
 # any feature of Qt which as been marked as deprecated (the exact warnings

@@ -1,3 +1,5 @@
+#include <QModelIndex>
+
 #include "BrowserApplication.h"
 #include "BrowserTabWidget.h"
 #include "MainWindow.h"
@@ -42,7 +44,10 @@
 #include <QPrintPreviewDialog>
 #include <QPushButton>
 #include <QShortcut>
+#include <QStyle>
 #include <QtGlobal>
+#include <QTabBar>
+#include <QToolBar>
 #include <QToolButton>
 
 MainWindow::MainWindow(std::shared_ptr<Settings> settings, BookmarkManager *bookmarkManager, bool privateWindow, QWidget *parent) :

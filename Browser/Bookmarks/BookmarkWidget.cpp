@@ -1,3 +1,4 @@
+#include <QModelIndex>
 #include "BookmarkWidget.h"
 #include "ui_bookmarkwidget.h"
 #include "BookmarkExporter.h"

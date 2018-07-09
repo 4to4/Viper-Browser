@@ -5,6 +5,7 @@
 #include <deque>
 #include <QUrl>
 #include <QWidget>
+#include <QModelIndex>
 
 namespace Ui {
 class BookmarkWidget;
