@@ -181,8 +181,12 @@ bool AdBlockFilter::isMatch(const QString &baseUrl, const QString &requestUrl, c
     if (m_disabled)
         return false;
 
-    // Don't process the filter if the AdBlockManager is only looking for one specific type
+    // Special cases
     if (typeMask == ElementType::InlineScript && !hasElementType(m_blockedTypes, ElementType::InlineScript))
+        return false;
+    if (hasElementType(m_blockedTypes, ElementType::ThirdParty) && !hasElementType(typeMask, ElementType::ThirdParty))
+        return false;
+    if (hasElementType(m_allowedTypes, ElementType::ThirdParty) && hasElementType(typeMask, ElementType::ThirdParty))
         return false;
 
     bool match = m_matchAll;
@@ -232,11 +236,11 @@ bool AdBlockFilter::isMatch(const QString &baseUrl, const QString &requestUrl, c
             return false;
 
         // Check for element type restrictions (in specific order)
-        std::array<ElementType, 14> elemTypes = {{ ElementType::XMLHTTPRequest,  ElementType::Document,   ElementType::Object,
-                                                  ElementType::Subdocument,      ElementType::ThirdParty, ElementType::Image,
-                                                  ElementType::Script,           ElementType::Stylesheet, ElementType::WebSocket,
-                                                  ElementType::ObjectSubrequest, ElementType::Ping,       ElementType::CSP,
-                                                  ElementType::InlineScript,     ElementType::Other }};
+        std::array<ElementType, 13> elemTypes = {{ ElementType::XMLHTTPRequest,  ElementType::Document,   ElementType::Object,
+                                                   ElementType::Subdocument,     ElementType::Image,      ElementType::Script,
+                                                   ElementType::Stylesheet,      ElementType::WebSocket,  ElementType::ObjectSubrequest,
+                                                   ElementType::InlineScript,    ElementType::Ping,       ElementType::CSP,
+                                                   ElementType::Other }};
 
         for (std::size_t i = 0; i < elemTypes.size(); ++i)
         {
