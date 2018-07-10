@@ -18,7 +18,6 @@ class MainWindow;
 class QActionGroup;
 class QLabel;
 class QNetworkReply;
-class QSslError;
 class QToolButton;
 class QWebInspector;
 class AdBlockWidget;
@@ -26,6 +25,7 @@ class BookmarkDialog;
 class BookmarkWidget;
 class BrowserTabWidget;
 class ClearHistoryDialog;
+class FaviconStorage;
 class Preferences;
 class SearchEngineLineEdit;
 class URLLineEdit;
@@ -49,7 +49,7 @@ class MainWindow : public QMainWindow
 
 public:
     /// Constructs the main window
-    explicit MainWindow(std::shared_ptr<Settings> settings, BookmarkManager *bookmarkManager, bool privateWindow, QWidget *parent = nullptr);
+    explicit MainWindow(std::shared_ptr<Settings> settings, BookmarkManager *bookmarkManager, FaviconStorage *faviconStore, bool privateWindow, QWidget *parent = nullptr);
 
     /// MainWindow destructor
     ~MainWindow();
@@ -190,6 +190,9 @@ private slots:
     /// Called when a link is hovered by the user
     void onLinkHovered(const QUrl &url);
 
+    /// Called by the "Save Page As..." file menu option - spawns a save file dialog and passes the save event to the appropriate handler
+    void onSavePageTriggered();
+
 protected slots:
     /**
      * @brief Called by a \ref WebView when it is requested that some content be opened in a new tab.
@@ -229,6 +232,9 @@ private:
 
     /// Bookmark manager interface
     BookmarkWidget *m_bookmarkUI;
+
+    /// Pointer to the favicon store
+    FaviconStorage *m_faviconStore;
 
     /// Dialog used to clear recent history, cookies, etc.
     ClearHistoryDialog *m_clearHistoryDialog;

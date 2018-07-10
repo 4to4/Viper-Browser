@@ -9,6 +9,7 @@
 #include <QUrl>
 
 class BrowserTabBar;
+class FaviconStorage;
 class MainWindow;
 class QMenu;
 class WebView;
@@ -48,8 +49,8 @@ class BrowserTabWidget : public QTabWidget
     enum NewTabPage { HomePage = 0, BlankPage = 1 };
 
 public:
-    /// Constructs the browser tab widget with the given parent
-    BrowserTabWidget(std::shared_ptr<Settings> settings, bool privateMode, QWidget *parent = nullptr);
+    /// Constructs the browser tab widget
+    explicit BrowserTabWidget(std::shared_ptr<Settings> settings, FaviconStorage *faviconStore, bool privateMode, QWidget *parent = nullptr);
 
     /// Returns a pointer to the current web view
     WebView *currentWebView() const;
@@ -88,6 +89,9 @@ public slots:
 
     /// Called when a tab is to be closed
     void closeTab(int index = -1);
+
+    /// Closes the currently active tab
+    void closeCurrentTab();
 
     /// Creates a new duplicate of the tab at the given index
     void duplicateTab(int index);
@@ -151,6 +155,9 @@ private:
 private:
     /// Browser settings
     std::shared_ptr<Settings> m_settings;
+
+    /// Pointer to the favicon store
+    FaviconStorage *m_faviconStore;
 
     /// Private browsing flag
     bool m_privateBrowsing;

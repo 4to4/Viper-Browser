@@ -50,13 +50,14 @@
 #include <QToolBar>
 #include <QToolButton>
 
-MainWindow::MainWindow(std::shared_ptr<Settings> settings, BookmarkManager *bookmarkManager, bool privateWindow, QWidget *parent) :
+MainWindow::MainWindow(std::shared_ptr<Settings> settings, BookmarkManager *bookmarkManager, FaviconStorage *faviconStore, bool privateWindow, QWidget *parent) :
     QMainWindow(parent),
     ui(new Ui::MainWindow),
     m_privateWindow(privateWindow),
     m_settings(settings),
     m_bookmarkManager(bookmarkManager),
     m_bookmarkUI(nullptr),
+    m_faviconStore(faviconStore),
     m_clearHistoryDialog(nullptr),
     m_tabWidget(nullptr),
     m_preferences(nullptr),
@@ -156,6 +157,7 @@ void MainWindow::setupBookmarks()
     connect(ui->menuBookmarks, &BookmarkMenu::removePageFromBookmarks, this, &MainWindow::removePageFromBookmarks);
 
     // Setup bookmark bar
+    ui->bookmarkBar->setFaviconStore(m_faviconStore);
     ui->bookmarkBar->setBookmarkManager(m_bookmarkManager);
     connect(ui->bookmarkBar, &BookmarkBar::loadBookmark, m_tabWidget, &BrowserTabWidget::loadUrl);
     connect(ui->bookmarkBar, &BookmarkBar::loadBookmarkNewTab, m_tabWidget, &BrowserTabWidget::openLinkInNewTab);
@@ -170,20 +172,12 @@ void MainWindow::setupMenuBar()
     connect(ui->actionNew_Tab, &QAction::triggered, [=](bool){
         m_tabWidget->newTab();
     });
-    connect(ui->actionNew_Window, &QAction::triggered, sBrowserApplication, &BrowserApplication::getNewWindow);
+    connect(ui->actionNew_Window,         &QAction::triggered, sBrowserApplication, &BrowserApplication::getNewWindow);
     connect(ui->actionNew_Private_Window, &QAction::triggered, sBrowserApplication, &BrowserApplication::getNewPrivateWindow);
-    connect(ui->actionClose_Tab, &QAction::triggered, [=](){
-        m_tabWidget->closeTab(m_tabWidget->currentIndex());
-    });
-    connect(ui->actionClose_Window, &QAction::triggered, this, &MainWindow::close);
-    connect(ui->action_Quit,        &QAction::triggered, sBrowserApplication, &BrowserApplication::quit);
-    connect(ui->actionOpen_File,    &QAction::triggered, this, &MainWindow::openFileInBrowser);
-    connect(ui->action_Print,       &QAction::triggered, this, &MainWindow::printTabContents);
-
+    connect(ui->actionClose_Tab,          &QAction::triggered, m_tabWidget,         &BrowserTabWidget::closeCurrentTab);
+    connect(ui->action_Quit,              &QAction::triggered, sBrowserApplication, &BrowserApplication::quit);
+    //connect(ui->action_Save_Page_As, &QAction::triggered, this, &MainWindow::onSavePageTriggered);
     addWebProxyAction(WebPage::SavePage, ui->action_Save_Page_As);
-
-    // Find action
-    connect(ui->action_Find, &QAction::triggered, this, &MainWindow::onFindTextAction);
 
     // Add proxy functionality to edit menu actions
     addWebProxyAction(WebPage::Undo, ui->action_Undo);
@@ -200,20 +194,11 @@ void MainWindow::setupMenuBar()
     connect(ui->actionZoom_Out, &QAction::triggered, m_tabWidget, &BrowserTabWidget::zoomOutCurrentView);
     connect(ui->actionReset_Zoom, &QAction::triggered, m_tabWidget, &BrowserTabWidget::resetZoomCurrentView);
 
-    // Full screen view mode
-    connect(ui->action_Full_Screen, &QAction::triggered, this, &MainWindow::onToggleFullScreen);
-
-    // Preferences window
-    connect(ui->actionPreferences, &QAction::triggered, this, &MainWindow::openPreferences);
-
-    // View-related
-    connect(ui->actionPage_So_urce, &QAction::triggered, this, &MainWindow::onRequestViewSource);
-
     // History menu
     connect(ui->menuHistory, &HistoryMenu::loadUrl, this, &MainWindow::loadUrl);
 
     // History menu items
-    connect(ui->menuHistory->m_actionShowHistory, &QAction::triggered, this, &MainWindow::onShowAllHistory);
+    connect(ui->menuHistory->m_actionShowHistory,  &QAction::triggered, this, &MainWindow::onShowAllHistory);
     connect(ui->menuHistory->m_actionClearHistory, &QAction::triggered, this, &MainWindow::openClearHistoryDialog);
 
     // Bookmark bar setting
@@ -252,7 +237,7 @@ void MainWindow::setupMenuBar()
 void MainWindow::setupTabWidget()
 {
     // Create tab widget and insert into the layout
-    m_tabWidget = new BrowserTabWidget(m_settings, m_privateWindow, this);
+    m_tabWidget = new BrowserTabWidget(m_settings, m_faviconStore, m_privateWindow, this);
     ui->verticalLayout->insertWidget(ui->verticalLayout->indexOf(ui->widgetFindText), m_tabWidget);
 
     // Add change tab slot after removing dummy tabs to avoid segfaulting
@@ -535,7 +520,7 @@ void MainWindow::openFileInBrowser()
         loadUrl(QUrl(QString("file://%1").arg(fileName)));
 }
 
-void MainWindow::onLoadFinished(bool /*ok*/)
+void MainWindow::onLoadFinished(bool ok)
 {
     WebView *view = qobject_cast<WebView*>(sender());
     if (!view)
@@ -544,7 +529,7 @@ void MainWindow::onLoadFinished(bool /*ok*/)
     const QString pageTitle = view->getTitle();
     QIcon icon = view->icon();
     if (icon.isNull())
-        icon = sBrowserApplication->getFaviconStorage()->getFavicon(view->url());
+        icon = m_faviconStore->getFavicon(view->url());
     updateTabIcon(icon, m_tabWidget->indexOf(view));
     updateTabTitle(pageTitle, m_tabWidget->indexOf(view));
 
@@ -557,7 +542,7 @@ void MainWindow::onLoadFinished(bool /*ok*/)
             view->setFocus();
     }
 
-    if (m_privateWindow)
+    if (m_privateWindow || !ok)
         return;
 
     // Get favicon and inform HistoryManager of the title and favicon associated with the page's url
@@ -585,7 +570,7 @@ void MainWindow::onLoadFinished(bool /*ok*/)
         }
         else if (iconRef.startsWith('/'))
             iconRef.prepend(pageUrlNoPath);
-        sBrowserApplication->getFaviconStorage()->updateIcon(iconRef, pageUrl, favicon);
+        m_faviconStore->updateIcon(iconRef, pageUrl, favicon);
     });
 }
 
@@ -820,4 +805,19 @@ void MainWindow::resizeEvent(QResizeEvent *event)
 void MainWindow::onLinkHovered(const QUrl &url)
 {
     m_linkHoverLabel->setText(url.toString());
+}
+
+void MainWindow::onSavePageTriggered()
+{
+    QString fileName = m_settings->getValue(BrowserSetting::DownloadDir).toString() + QDir::separator()
+            + m_tabWidget->tabText(m_tabWidget->currentIndex());
+    fileName = QFileDialog::getSaveFileName(this, tr("Save as..."), fileName,
+                                            tr("HTML page(*.html);;MIME HTML page(*.mhtml)"));
+    if (!fileName.isEmpty())
+    {
+        auto format = QWebEngineDownloadItem::SingleHtmlSaveFormat;
+        if (fileName.endsWith(QLatin1String("mhtml")))
+            format = QWebEngineDownloadItem::MimeHtmlSaveFormat;
+        m_tabWidget->currentWebView()->page()->save(fileName, format);
+    }
 }
