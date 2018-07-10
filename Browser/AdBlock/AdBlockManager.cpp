@@ -130,7 +130,8 @@ void AdBlockManager::installResource(const QUrl &url)
     request.setUrl(url);
 
     DownloadManager *downloadMgr = sBrowserApplication->getDownloadManager();
-    InternalDownloadItem *item = downloadMgr->downloadInternal(request, m_subscriptionDir, false);
+    InternalDownloadItem *item = downloadMgr->downloadInternal(request, 
+		m_subscriptionDir + QDir::separator() + QString("resources"), false);
     connect(item, &InternalDownloadItem::downloadFinished, this, &AdBlockManager::loadResourceFile);
 }
 
@@ -782,25 +783,41 @@ void AdBlockManager::extractFilters()
     }
 
     // Remove bad filters from m_allowFilters, m_blockFilters, m_genericHideFilters, m_cspFilters
-    for (auto it = m_allowFilters.begin(); it != m_allowFilters.end(); ++it)
+    for (std::vector<AdBlockFilter*>::iterator it = m_allowFilters.begin(); it != m_allowFilters.end(); ++it)
     {
-        if (badFilters.contains((*it)->getRule()))
-            m_allowFilters.erase(it);
+		if (badFilters.contains((*it)->getRule()))
+		{
+			auto itCpy = it;
+			--it;
+			m_allowFilters.erase(itCpy);
+		}
     }
-    for (auto it = m_blockFilters.begin(); it != m_blockFilters.end(); ++it)
+    for (std::vector<AdBlockFilter*>::iterator it = m_blockFilters.begin(); it != m_blockFilters.end(); ++it)
     {
-        if (badFilters.contains((*it)->getRule()))
-            m_blockFilters.erase(it);
+		if (badFilters.contains((*it)->getRule()))
+		{
+			auto itCpy = it;
+			--it;
+			m_blockFilters.erase(itCpy);
+		}
     }
-    for (auto it = m_cspFilters.begin(); it != m_cspFilters.end(); ++it)
+    for (std::vector<AdBlockFilter*>::iterator it = m_cspFilters.begin(); it != m_cspFilters.end(); ++it)
     {
-        if (badFilters.contains((*it)->getRule()))
-            m_cspFilters.erase(it);
+		if (badFilters.contains((*it)->getRule()))
+		{
+			auto itCpy = it;
+			--it;
+			m_cspFilters.erase(itCpy);
+		}
     }
-    for (auto it = m_genericHideFilters.begin(); it != m_genericHideFilters.end(); ++it)
+    for (std::vector<AdBlockFilter*>::iterator it = m_genericHideFilters.begin(); it != m_genericHideFilters.end(); ++it)
     {
-        if (badHideFilters.contains((*it)->getRule()))
-            m_genericHideFilters.erase(it);
+		if (badHideFilters.contains((*it)->getRule()))
+		{
+			auto itCpy = it;
+			--it;
+			m_genericHideFilters.erase(itCpy);
+		}
     }
 
     // Parse stylesheet exceptions
