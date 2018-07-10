@@ -36,6 +36,7 @@ BrowserApplication::BrowserApplication(int &argc, char **argv) :
     QCoreApplication::setApplicationName(QLatin1String("Viper Browser"));
     QCoreApplication::setApplicationVersion(QLatin1String("0.7"));
 
+	setAttribute(Qt::AA_UseSoftwareOpenGL);
     setAttribute(Qt::AA_UseHighDpiPixmaps, true);
     setAttribute(Qt::AA_DontShowIconsInMenus, false);
 
