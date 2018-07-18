@@ -6,6 +6,7 @@
 #include "URLLineEdit.h"
 #include "WebPage.h"
 #include "WebView.h"
+#include "WebWidget.h"
 
 #include <QMenu>
 #include <QSplitter>
@@ -180,7 +181,7 @@ void NavigationToolBar::onLoadProgress(int value)
         m_stopRefresh->setToolTip(tr("Reload the page"));
     }
 
-    m_adBlockButton->updateCount();
+    //m_adBlockButton->updateCount();
 }
 
 void NavigationToolBar::onURLInputEntered()
@@ -189,7 +190,7 @@ void NavigationToolBar::onURLInputEntered()
     if (!win)
         return;
 
-    WebView *view = win->currentWebView();
+    WebWidget *view = win->currentWebWidget();
     if (!view)
         return;
 
@@ -207,12 +208,12 @@ void NavigationToolBar::onStopRefreshActionTriggered()
     if (!win)
         return;
 
-    if (WebView *view = win->currentWebView())
+    if (WebWidget *ww = win->currentWebWidget())
     {
-        int progress = view->getProgress();
+        int progress = ww->getProgress();
         if (progress > 0 && progress < 100)
-            view->stop();
+            ww->stop();
         else
-            view->reload();
+            ww->reload();
     }
 }

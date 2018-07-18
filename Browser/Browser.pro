@@ -6,7 +6,7 @@
 
 QT       += core concurrent gui sql printsupport
 
-greaterThan(QT_MAJOR_VERSION, 4): QT += widgets webenginewidgets
+greaterThan(QT_MAJOR_VERSION, 4): QT += quickwidgets widgets webenginewidgets
 
 TARGET = viper-browser
 TEMPLATE = app
@@ -16,6 +16,8 @@ CONFIG += console network
 
 LIBS += -LC:/OpenSSL-Win64/lib -llibssl
 LIBS += -LC:/OpenSSL-Win64/lib -llibcrypto
+QMAKE_CXXFLAGS += -std=c++14
+QMAKE_CXXFLAGS_RELEASE += -O2
 
 # The following define makes your compiler emit warnings if you use
 # any feature of Qt which as been marked as deprecated (the exact warnings
@@ -43,6 +45,7 @@ INCLUDEPATH += \
     $$PWD/Highlighters \
     $$PWD/Network \
     $$PWD/Preferences \
+    $$PWD/URLSuggestion \
     $$PWD/UserAgents \
     $$PWD/UserScripts \
     $$PWD/Web \
@@ -129,11 +132,11 @@ SOURCES += \
     Preferences/ExemptThirdPartyCookieDialog.cpp \
     Web/WebHitTestResult.cpp \
     Window/NavigationToolBar.cpp \
-    Window/URLSuggestionWidget.cpp \
-    Window/URLSuggestionItemDelegate.cpp \
+    URLSuggestion/URLSuggestionWidget.cpp \
+    URLSuggestion/URLSuggestionItemDelegate.cpp \
     Network/BlockedSchemeHandler.cpp \
-    Window/URLSuggestionListModel.cpp \
-    Window/URLSuggestionWorker.cpp \
+    URLSuggestion/URLSuggestionListModel.cpp \
+    URLSuggestion/URLSuggestionWorker.cpp \
     Web/WebWidget.cpp \
     AdBlock/AdBlockButton.cpp
 
@@ -219,11 +222,11 @@ HEADERS += \
     Preferences/ExemptThirdPartyCookieDialog.h \
     Web/WebHitTestResult.h \
     Window/NavigationToolBar.h \
-    Window/URLSuggestionWidget.h \
-    Window/URLSuggestionItemDelegate.h \
+    URLSuggestion/URLSuggestionWidget.h \
+    URLSuggestion/URLSuggestionItemDelegate.h \
     Network/BlockedSchemeHandler.h \
-    Window/URLSuggestionListModel.h \
-    Window/URLSuggestionWorker.h \
+    URLSuggestion/URLSuggestionListModel.h \
+    URLSuggestion/URLSuggestionWorker.h \
     Web/WebWidget.h \
     AdBlock/AdBlockButton.h
 

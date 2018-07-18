@@ -3,7 +3,7 @@
 #include "SecurityManager.h"
 #include "URLLineEdit.h"
 #include "URLSuggestionWidget.h"
-#include "WebView.h"
+#include "WebWidget.h"
 
 #include <QCompleter>
 #include <QIcon>
@@ -21,6 +21,7 @@ URLLineEdit::URLLineEdit(QWidget *parent) :
     m_activeWebView(nullptr),
     m_suggestionWidget(nullptr)
 {
+    setObjectName(QLatin1String("urlLineEdit"));
     setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Maximum);
 
     QFont lineEditFont = font();
@@ -111,10 +112,10 @@ void URLLineEdit::setURL(const QUrl &url)
 {
     setText(url.toString(QUrl::FullyEncoded));
 
+    const QString scheme = url.scheme();
     SecurityIcon secureIcon = SecurityIcon::Standard;
 
-    const bool isHttps = url.scheme().compare(QLatin1String("https")) == 0;
-    if (isHttps)
+    if (scheme == QLatin1String("https") || scheme == QLatin1String("viper"))
         secureIcon = SecurityManager::instance().isInsecure(url.host()) ? SecurityIcon::Insecure : SecurityIcon::Secure;
 
     setSecurityIcon(secureIcon);
@@ -187,7 +188,7 @@ void URLLineEdit::setTextFormat(const std::vector<QTextLayout::FormatRange> &for
     QCoreApplication::sendEvent(this, &event);
 }
 
-void URLLineEdit::removeMappedView(WebView *view)
+void URLLineEdit::removeMappedView(WebWidget *view)
 {
     auto it = m_userTextMap.find(view);
     if (it != m_userTextMap.end())
@@ -204,7 +205,7 @@ void URLLineEdit::onTextEdited(const QString &text)
 {
     if (MainWindow *mw = qobject_cast<MainWindow*>(window()))
     {
-        const QUrl currentViewUrl = mw->currentWebView()->url();
+        const QUrl currentViewUrl = mw->currentWebWidget()->url();
         if (currentViewUrl.toString(QUrl::FullyEncoded).compare(text) == 0)
         {
             setURLFormatted(currentViewUrl);
@@ -218,7 +219,7 @@ void URLLineEdit::onTextEdited(const QString &text)
     setTextFormat(std::vector<QTextLayout::FormatRange>());
 }
 
-void URLLineEdit::tabChanged(WebView *newView)
+void URLLineEdit::tabChanged(WebWidget *newView)
 {
     if (m_activeWebView != nullptr)
         m_userTextMap[m_activeWebView] = text();

@@ -31,6 +31,7 @@ class SearchEngineLineEdit;
 class URLLineEdit;
 class UserScriptWidget;
 class WebView;
+class WebWidget;
 
 /**
  * @class MainWindow
@@ -44,6 +45,7 @@ class MainWindow : public QMainWindow
     friend class SessionManager;
     friend class URLLineEdit;
     friend class WebView;
+    friend class WebWidget;
 
     Q_OBJECT
 
@@ -57,8 +59,8 @@ public:
     /// Returns true if this is a private browsing window, false if else
     bool isPrivate() const;
 
-    /// Returns a pointer to the current web view
-    WebView *currentWebView() const;
+    /// Returns a pointer to the current web widget
+    WebWidget *currentWebWidget() const;
 
 signals:
     /// Emitted when the window is about to be closed
@@ -179,7 +181,7 @@ private slots:
     void onShowAllHistory();
 
     /// Connects the signals emitted by the web view to slots handled by the browser window
-    void onNewTabCreated(WebView *view);
+    void onNewTabCreated(WebWidget *ww);
 
     /// Called when the user wants to view the source code of the current web page
     void onRequestViewSource();
@@ -188,18 +190,10 @@ private slots:
     void printTabContents();
 
     /// Called when a link is hovered by the user
-    void onLinkHovered(const QUrl &url);
+    void onLinkHovered(const QString &url);
 
     /// Called by the "Save Page As..." file menu option - spawns a save file dialog and passes the save event to the appropriate handler
     void onSavePageTriggered();
-
-protected slots:
-    /**
-     * @brief Called by a \ref WebView when it is requested that some content be opened in a new tab.
-     * @param makeCurrent If true, the tab widget will switch its active tab to the newly created view.
-     * @return A pointer to the new WebView.
-     */
-    WebView *getNewTabWebView(bool makeCurrent);
 
 protected:
     /// Returns a pointer to the tab widget. Used by \ref SessionManager to save the browsing session

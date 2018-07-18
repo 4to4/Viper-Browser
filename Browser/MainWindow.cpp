@@ -26,6 +26,7 @@
 #include "UserScriptWidget.h"
 #include "WebPage.h"
 #include "WebView.h"
+#include "WebWidget.h"
 
 #include <functional>
 #include <QActionGroup>
@@ -45,6 +46,7 @@
 #include <QPushButton>
 #include <QShortcut>
 #include <QStyle>
+#include <QTimer>
 #include <QtGlobal>
 #include <QTabBar>
 #include <QToolBar>
@@ -94,7 +96,7 @@ MainWindow::MainWindow(std::shared_ptr<Settings> settings, BookmarkManager *book
 
     ui->dockWidget->hide();
     ui->widgetFindText->hide();
-    m_tabWidget->currentWebView()->setFocus();
+    m_tabWidget->currentWebWidget()->setFocus();
 }
 
 MainWindow::~MainWindow()
@@ -122,14 +124,14 @@ bool MainWindow::isPrivate() const
     return m_privateWindow;
 }
 
-WebView *MainWindow::currentWebView() const
+WebWidget *MainWindow::currentWebWidget() const
 {
-    return m_tabWidget->currentWebView();
+    return m_tabWidget->currentWebWidget();
 }
 
 void MainWindow::loadBlankPage()
 {
-    m_tabWidget->currentWebView()->loadBlankPage();
+    m_tabWidget->currentWebWidget()->loadBlankPage();
 }
 
 void MainWindow::loadUrl(const QUrl &url)
@@ -139,7 +141,7 @@ void MainWindow::loadUrl(const QUrl &url)
 
 void MainWindow::openLinkNewTab(const QUrl &url)
 {
-    m_tabWidget->openLinkInNewTab(url);
+    m_tabWidget->openLinkInNewBackgroundTab(url);
 }
 
 void MainWindow::openLinkNewWindow(const QUrl &url)
@@ -160,7 +162,7 @@ void MainWindow::setupBookmarks()
     ui->bookmarkBar->setFaviconStore(m_faviconStore);
     ui->bookmarkBar->setBookmarkManager(m_bookmarkManager);
     connect(ui->bookmarkBar, &BookmarkBar::loadBookmark, m_tabWidget, &BrowserTabWidget::loadUrl);
-    connect(ui->bookmarkBar, &BookmarkBar::loadBookmarkNewTab, m_tabWidget, &BrowserTabWidget::openLinkInNewTab);
+    connect(ui->bookmarkBar, &BookmarkBar::loadBookmarkNewTab, m_tabWidget, &BrowserTabWidget::openLinkInNewBackgroundTab);
     connect(ui->bookmarkBar, &BookmarkBar::loadBookmarkNewWindow, [=](const QUrl &url){
         m_tabWidget->openLinkInNewWindow(url, m_privateWindow);
     });
@@ -170,7 +172,7 @@ void MainWindow::setupMenuBar()
 {
     // File menu slots
     connect(ui->actionNew_Tab, &QAction::triggered, [=](bool){
-        m_tabWidget->newTab();
+        m_tabWidget->newBackgroundTab();
     });
     connect(ui->actionNew_Window,         &QAction::triggered, sBrowserApplication, &BrowserApplication::getNewWindow);
     connect(ui->actionNew_Private_Window, &QAction::triggered, sBrowserApplication, &BrowserApplication::getNewPrivateWindow);
@@ -226,9 +228,9 @@ void MainWindow::setupMenuBar()
     });
 
     // Set web page for proxy actions (called automatically during onTabChanged event after all UI elements are set up)
-    if (WebView *view = m_tabWidget->getWebView(0))
+    if (WebWidget *view = m_tabWidget->getWebWidget(0))
     {
-        QWebEnginePage *page = view->page();
+        WebPage *page = view->page();
         for (WebActionProxy *proxy : m_webActions)
             proxy->setPage(page);
     }
@@ -247,14 +249,20 @@ void MainWindow::setupTabWidget()
     connect(m_tabWidget, &BrowserTabWidget::newTabCreated, this, &MainWindow::onNewTabCreated);
     connect(m_tabWidget, &BrowserTabWidget::loadProgress, [=](int progress) {
         if (progress > 0 && progress < 100)
+        {
             m_linkHoverLabel->setText(QString("%1% loaded...").arg(progress));
+            //ui->statusBar->show();
+        }
         else
+        {
             m_linkHoverLabel->setText(QString());
+            //ui->statusBar->hide();
+        }
     });
     ui->toolBar->bindWithTabWidget();
 
     // Add first tab
-    m_tabWidget->newTab(true);
+    static_cast<void>(m_tabWidget->newTab());
 }
 
 void MainWindow::setupStatusBar()
@@ -266,42 +274,42 @@ void MainWindow::setupStatusBar()
 
 void MainWindow::checkPageForBookmark()
 {
-    WebView *view = m_tabWidget->currentWebView();
-    if (!view)
+    WebWidget *ww = m_tabWidget->currentWebWidget();
+    if (!ww)
         return;
 
-    const bool isBookmarked = m_bookmarkManager->isBookmarked(view->url().toString());
+    const bool isBookmarked = m_bookmarkManager->isBookmarked(ww->url().toString());
     ui->menuBookmarks->setCurrentPageBookmarked(isBookmarked);
     ui->toolBar->getURLWidget()->setCurrentPageBookmarked(isBookmarked);
 }
 
 void MainWindow::onTabChanged(int index)
 {
-    WebView *view = m_tabWidget->getWebView(index);
-    if (!view)
+    WebWidget *ww = m_tabWidget->getWebWidget(index);
+    if (!ww)
         return;
 
     // Update UI elements to reflect current view
-    ui->widgetFindText->setWebView(view);
+    ui->widgetFindText->setWebView(ww->view());
     ui->widgetFindText->hide();
 
     // Save text in URL line edit, set widget's contents to the current URL, or if the URL is empty or "about:blank",
     // set to user text input
     URLLineEdit *urlInput = ui->toolBar->getURLWidget();
-    urlInput->tabChanged(view);
+    urlInput->tabChanged(ww);
 
-    const bool isBlankPage = view->isOnBlankPage();
+    const bool isBlankPage = ww->isOnBlankPage();
     if (urlInput->text().isEmpty() || !isBlankPage)
-        urlInput->setURL(view->url());        
+        urlInput->setURL(ww->url());
 
     // Show dock widget with dev tools UI if it was opened in the last tab
     if (ui->dockWidget->isVisible())
-        view->inspectElement();
+        ww->inspectElement();
 
     checkPageForBookmark();
 
     // Change current page for web proxies
-    QWebEnginePage *page = view->page();
+    WebPage *page = ww->page();
     for (WebActionProxy *proxy : m_webActions)
         proxy->setPage(page);
 
@@ -314,7 +322,7 @@ void MainWindow::onTabChanged(int index)
             urlInput->selectAll();
     }
     else
-        view->setFocus();
+        ww->setFocus();
 }
 
 void MainWindow::openBookmarkWidget()
@@ -410,12 +418,12 @@ void MainWindow::refreshBookmarkMenu()
 
 void MainWindow::addPageToBookmarks()
 {
-    WebView *view = m_tabWidget->currentWebView();
-    if (!view)
+    WebWidget *ww = m_tabWidget->currentWebWidget();
+    if (!ww)
         return;
 
-    const QString bookmarkName = view->getTitle();
-    const QString bookmarkUrl = view->url().toString();
+    const QString bookmarkName = ww->getTitle();
+    const QString bookmarkUrl = ww->url().toString();
     if (m_bookmarkManager->isBookmarked(bookmarkUrl))
         return;
     m_bookmarkManager->appendBookmark(bookmarkName, bookmarkUrl);
@@ -432,11 +440,11 @@ void MainWindow::addPageToBookmarks()
 
 void MainWindow::removePageFromBookmarks(bool showDialog)
 {
-    WebView *view = m_tabWidget->currentWebView();
-    if (!view)
+    WebWidget *ww = m_tabWidget->currentWebWidget();
+    if (!ww)
         return;
 
-    m_bookmarkManager->removeBookmark(view->url().toString());
+    m_bookmarkManager->removeBookmark(ww->url().toString());
     if (showDialog)
         QMessageBox::information(this, tr("Bookmark"), tr("Page removed from bookmarks."));
 }
@@ -522,24 +530,24 @@ void MainWindow::openFileInBrowser()
 
 void MainWindow::onLoadFinished(bool ok)
 {
-    WebView *view = qobject_cast<WebView*>(sender());
-    if (!view)
+    WebWidget *ww = qobject_cast<WebWidget*>(sender());
+    if (!ww)
         return;
 
-    const QString pageTitle = view->getTitle();
-    QIcon icon = view->icon();
+    const QString pageTitle = ww->getTitle();
+    QIcon icon = ww->getIcon();
     if (icon.isNull())
-        icon = m_faviconStore->getFavicon(view->url());
-    updateTabIcon(icon, m_tabWidget->indexOf(view));
-    updateTabTitle(pageTitle, m_tabWidget->indexOf(view));
+        icon = m_faviconStore->getFavicon(ww->url());
+    updateTabIcon(icon, m_tabWidget->indexOf(ww));
+    updateTabTitle(pageTitle, m_tabWidget->indexOf(ww));
 
-    if (m_tabWidget->currentWebView() == view)
+    if (m_tabWidget->currentWebWidget() == ww)
     {
-        ui->toolBar->getURLWidget()->setURL(view->url());
+        ui->toolBar->getURLWidget()->setURL(ww->url());
         checkPageForBookmark();
 
-        if (!view->isOnBlankPage())
-            view->setFocus();
+        if (!ww->isOnBlankPage())
+            ww->setFocus();
     }
 
     if (m_privateWindow || !ok)
@@ -549,17 +557,17 @@ void MainWindow::onLoadFinished(bool ok)
     BrowserApplication *browserApp = sBrowserApplication;
     HistoryManager *historyMgr = browserApp->getHistoryManager();
 
-    QIcon favicon = view->icon();
-    QString pageUrl = view->url().toString();
-    QString pageUrlNoPath = view->url().toString(QUrl::RemovePath);
-    QString pageScheme = view->url().scheme();
-    const bool isBlankPage = view->isOnBlankPage();
+    QIcon favicon = ww->getIcon();
+    QString pageUrl = ww->url().toString();
+    QString pageUrlNoPath = ww->url().toString(QUrl::RemovePath);
+    QString pageScheme = ww->url().scheme();
+    const bool isBlankPage = ww->isOnBlankPage();
 
     if (!isBlankPage && !pageUrl.isEmpty())
         historyMgr->addHistoryEntry(pageUrl, pageTitle);
 
     // Attempt to fetch the URL of the favicon from the page
-    view->page()->runJavaScript(m_faviconScript, [=](const QVariant &v) {
+    ww->page()->runJavaScript(m_faviconScript, [=](const QVariant &v) {
         if (v.isNull() || !v.canConvert<QString>())
             return;
 
@@ -581,46 +589,48 @@ void MainWindow::onShowAllHistory()
 
     // Attach signals to current browser window
     disconnect(histWidget, &HistoryWidget::openLink, m_tabWidget, &BrowserTabWidget::loadUrl);
-    disconnect(histWidget, &HistoryWidget::openLinkNewTab, m_tabWidget, &BrowserTabWidget::openLinkInNewTab);
+    disconnect(histWidget, &HistoryWidget::openLinkNewTab, m_tabWidget, &BrowserTabWidget::openLinkInNewBackgroundTab);
     disconnect(histWidget, &HistoryWidget::openLinkNewWindow, this, &MainWindow::openLinkNewWindow);
 
     connect(histWidget, &HistoryWidget::openLink, m_tabWidget, &BrowserTabWidget::loadUrl);
-    connect(histWidget, &HistoryWidget::openLinkNewTab, m_tabWidget, &BrowserTabWidget::openLinkInNewTab);
+    connect(histWidget, &HistoryWidget::openLinkNewTab, m_tabWidget, &BrowserTabWidget::openLinkInNewBackgroundTab);
     connect(histWidget, &HistoryWidget::openLinkNewWindow, this, &MainWindow::openLinkNewWindow);
 
     histWidget->show();
 }
 
-void MainWindow::onNewTabCreated(WebView *view)
+void MainWindow::onNewTabCreated(WebWidget *ww)
 {
     // Connect signals to slots for UI updates (page title, icon changes)
-    connect(view, &WebView::loadFinished, this, &MainWindow::onLoadFinished);
-    connect(view, &WebView::inspectElement, [=]() {
-        WebView *inspectorView = dynamic_cast<WebView*>(ui->dockWidget->widget());
+    connect(ww, &WebWidget::loadFinished, this, &MainWindow::onLoadFinished);
+    connect(ww, &WebWidget::inspectElement, [=]() {
+        WebView *inspectorView = qobject_cast<WebView*>(ui->dockWidget->widget());
         if (!inspectorView)
         {
             inspectorView = new WebView(ui->dockWidget);
+            inspectorView->setupPage();
             inspectorView->setObjectName(QLatin1String("inspectorView"));
             inspectorView->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+            inspectorView->setContextMenuPolicy(Qt::NoContextMenu);
             ui->dockWidget->setWidget(inspectorView);
 #if (QTWEBENGINECORE_VERSION >= QT_VERSION_CHECK(5, 11, 0))
-            inspectorView->setContextMenuPolicy(Qt::CustomContextMenu);
+            //inspectorView->setContextMenuPolicy(Qt::CustomContextMenu);
             connect(inspectorView, &WebView::openRequest, this, &MainWindow::openLinkNewTab);
-            connect(inspectorView, &WebView::openInNewTabRequest, this, &MainWindow::openLinkNewTab);
+            connect(inspectorView, &WebView::openInNewTab, this, &MainWindow::openLinkNewTab);
 #endif
         }
 #if (QTWEBENGINECORE_VERSION >= QT_VERSION_CHECK(5, 11, 0))
-        WebPage *inspectorPage = dynamic_cast<WebPage*>(inspectorView->page());
-        inspectorPage->setInspectedPage(view->page());
+        WebPage *inspectorPage = inspectorView->getPage();
+        inspectorPage->setInspectedPage(ww->page());
 #else
         QString inspectorUrl = QString("http://127.0.0.1:%1").arg(m_settings->getValue(BrowserSetting::InspectorPort).toString());
         inspectorView->load(QUrl(inspectorUrl));
 #endif
         ui->dockWidget->show();
     });
-    connect(view, &WebView::linkHovered, this, &MainWindow::onLinkHovered);
+    connect(ww, &WebWidget::linkHovered, this, &MainWindow::onLinkHovered);
 
-    if (WebPage *page = dynamic_cast<WebPage*>(view->page()))
+    if (WebPage *page = dynamic_cast<WebPage*>(ww->page()))
     {
         connect(page, &WebPage::printPageRequest, this, &MainWindow::printTabContents);
     }
@@ -628,7 +638,7 @@ void MainWindow::onNewTabCreated(WebView *view)
 
 void MainWindow::onClickSecurityInfo()
 {
-    WebView *currentView = m_tabWidget->currentWebView();
+    WebWidget *currentView = m_tabWidget->currentWebWidget();
     if (!currentView)
         return;
     SecurityManager::instance().showSecurityInfo(currentView->url());
@@ -636,7 +646,7 @@ void MainWindow::onClickSecurityInfo()
 
 void MainWindow::onRequestViewSource()
 {
-    WebView *currentView = m_tabWidget->currentWebView();
+    WebWidget *currentView = m_tabWidget->currentWebWidget();
     if (!currentView)
         return;
 
@@ -700,7 +710,7 @@ void MainWindow::printTabContents()
     WebPage *page = qobject_cast<WebPage*>(sender());
     if (!page)
     {
-        if (WebView *currentView = m_tabWidget->currentWebView())
+        if (WebWidget *currentView = m_tabWidget->currentWebWidget())
             page = qobject_cast<WebPage*>(currentView->page());
     }
     if (!page)
@@ -719,7 +729,7 @@ void MainWindow::printTabContents()
 
 void MainWindow::onClickBookmarkIcon()
 {
-    WebView *currentView = m_tabWidget->currentWebView();
+    WebWidget *currentView = m_tabWidget->currentWebWidget();
     if (!currentView)
         return;
 
@@ -738,11 +748,6 @@ void MainWindow::onClickBookmarkIcon()
         // Set position of add bookmark dialog to align just under the URL bar on the right side
         m_bookmarkDialog->alignAndShow(frameGeometry(), ui->toolBar->frameGeometry(), ui->toolBar->getURLWidget()->frameGeometry());
     }
-}
-
-WebView *MainWindow::getNewTabWebView(bool makeCurrent)
-{
-    return m_tabWidget->newTab(makeCurrent);
 }
 
 BrowserTabWidget *MainWindow::getTabWidget() const
@@ -802,9 +807,24 @@ void MainWindow::resizeEvent(QResizeEvent *event)
     ui->bookmarkBar->setMaximumWidth(winWidth);
 }
 
-void MainWindow::onLinkHovered(const QUrl &url)
+void MainWindow::onLinkHovered(const QString &url)
 {
-    m_linkHoverLabel->setText(url.toString());
+    m_linkHoverLabel->setText(url);
+
+    /*
+    if (!urlStr.isEmpty())
+    {
+        QFontMetrics urlFMetrics(m_linkHoverLabel->font());
+        int urlWidth = urlFMetrics.width(urlStr);
+        ui->statusBar->setMaximumWidth(std::min(urlWidth + 6, width()));
+        ui->statusBar->show();
+    }
+    else
+    {
+        QTimer::singleShot(250, this, [this](){
+            ui->statusBar->hide();
+        });
+    }*/
 }
 
 void MainWindow::onSavePageTriggered()
@@ -818,6 +838,6 @@ void MainWindow::onSavePageTriggered()
         auto format = QWebEngineDownloadItem::SingleHtmlSaveFormat;
         if (fileName.endsWith(QLatin1String("mhtml")))
             format = QWebEngineDownloadItem::MimeHtmlSaveFormat;
-        m_tabWidget->currentWebView()->page()->save(fileName, format);
+        m_tabWidget->currentWebWidget()->page()->save(fileName, format);
     }
 }

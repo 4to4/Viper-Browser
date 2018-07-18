@@ -11,6 +11,8 @@
 #include <QWebEngineContextMenuData>
 #include <QWebEngineProfile>
 #include <QWheelEvent>
+#include <QVBoxLayout>
+#include <QQuickWidget>
 
 #include "BrowserApplication.h"
 #include "BrowserTabWidget.h"
@@ -21,6 +23,7 @@
 #include "WebHitTestResult.h"
 #include "WebView.h"
 #include "WebPage.h"
+#include "WebWidget.h"
 
 WebView::WebView(bool privateView, QWidget *parent) :
     QWebEngineView(parent),
@@ -28,36 +31,15 @@ WebView::WebView(bool privateView, QWidget *parent) :
     m_progress(0),
     m_privateView(privateView),
     m_contextMenuHelper(),
-    m_jsCallbackResult()
+    m_jsCallbackResult(),
+    m_viewFocusProxy(nullptr)
 {
     setAcceptDrops(true);
+    setObjectName(QLatin1String("webView"));
     setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Expanding);
 
-    if (privateView)
-    {
-        auto profile = sBrowserApplication->getPrivateBrowsingProfile();
-        m_page = new WebPage(profile, this); 
-    }
-    else
-        m_page = new WebPage(this);
-
-    setPage(m_page);
-
-    // Setup link hover signal
-    connect(m_page, &WebPage::linkHovered, this, &WebView::linkHovered);
-
-    // Emit a viewCloseRequested signal when the page emits windowCloseRequested
-    connect(m_page, &WebPage::windowCloseRequested, this, &WebView::viewCloseRequested);
-
-    // Handle full screen requests
-    connect(m_page, &WebPage::fullScreenRequested, this, &WebView::onFullScreenRequested);
-
-    connect(this, &WebView::loadProgress, [=](int value){
-       m_progress = value;
-    });
-
     // Load context menu helper script for image URL detection
-    QFile contextScriptFile(":/ContextMenuHelper.js");
+    QFile contextScriptFile(QLatin1String(":/ContextMenuHelper.js"));
     if (contextScriptFile.open(QIODevice::ReadOnly))
     {
         m_contextMenuHelper = QString(contextScriptFile.readAll());
@@ -72,12 +54,12 @@ int WebView::getProgress() const
 
 void WebView::loadBlankPage()
 {
-    load(QUrl("viper://blank"));
+    load(QUrl(QLatin1String("viper://blank")));
 }
 
 bool WebView::isOnBlankPage() const
 {
-    return url() == QUrl("viper://blank");
+    return url() == QUrl(QLatin1String("viper://blank"));
 }
 
 QString WebView::getTitle() const
@@ -109,6 +91,49 @@ void WebView::load(const QUrl &url)
         return;
 
     QWebEngineView::load(url);
+}
+
+QWidget *WebView::getViewFocusProxy()
+{
+    if (!m_viewFocusProxy.isNull())
+        return m_viewFocusProxy;
+
+    if (focusProxy() != nullptr)
+        return focusProxy();
+
+    QList<QQuickWidget*> children = findChildren<QQuickWidget*>();
+    for (int i = children.size() - 1; i >= 0; --i)
+    {
+        QQuickWidget *w = children.at(i);
+        if (w && w->isVisible())
+            return w;
+    }
+    return nullptr;
+}
+
+WebPage *WebView::getPage() const
+{
+    return m_page;
+}
+
+void WebView::setupPage()
+{
+    if (m_page != nullptr)
+        return;
+
+    QWebEngineProfile *profile = m_privateView ? sBrowserApplication->getPrivateBrowsingProfile() : QWebEngineProfile::defaultProfile();
+
+    m_page = new WebPage(profile);
+    m_page->setParent(this);
+
+    QWebEngineView::setPage(m_page);
+
+    // Handle full screen requests
+    connect(m_page, &WebPage::fullScreenRequested, this, &WebView::onFullScreenRequested);
+
+    connect(this, &WebView::loadProgress, [=](int value){
+       m_progress = value;
+    });
 }
 
 void WebView::resetZoom()
@@ -150,7 +175,7 @@ void WebView::showContextMenu(const QPoint &globalPos, const QPoint &relativePos
     if (!linkUrl.isEmpty())
     {
         menu.addAction(tr("Open link in new tab"), [=](){
-            emit openInNewTabRequest(linkUrl);
+            emit openInNewBackgroundTab(linkUrl);
         });
         menu.addAction(tr("Open link in new window"), [=](){
             emit openInNewWindowRequest(linkUrl, m_privateView);
@@ -164,7 +189,7 @@ void WebView::showContextMenu(const QPoint &globalPos, const QPoint &relativePos
     if (mediaType == WebHitTestResult::MediaTypeImage)
     {
         menu.addAction(tr("Open image in new tab"), [=](){
-            emit openInNewTabRequest(contextMenuData.mediaUrl());
+            emit openInNewBackgroundTab(contextMenuData.mediaUrl());
         });
         menu.addAction(tr("Open image"), [=](){
             emit openRequest(contextMenuData.mediaUrl());
@@ -228,16 +253,19 @@ void WebView::showContextMenu(const QPoint &globalPos, const QPoint &relativePos
         // Search for current selection menu option
         SearchEngineManager *searchMgr = &SearchEngineManager::instance();
         menu.addAction(tr("Search %1 for selected text").arg(searchMgr->getDefaultSearchEngine()), [=](){
+            QString textArg = text;
+            textArg.replace(QLatin1Char(' '), QLatin1Char('+'));
+
             QString searchUrl = searchMgr->getQueryString(searchMgr->getDefaultSearchEngine());
-            searchUrl.replace("=%s", QString("=%1").arg(text));
-            emit openInNewTabRequest(QUrl::fromUserInput(searchUrl));
+            searchUrl.replace("=%s", QString("=%1").arg(textArg));
+            emit openInNewBackgroundTab(QUrl::fromUserInput(searchUrl));
         });
 
         QUrl selectionUrl = QUrl::fromUserInput(text);
         if (selectionUrl.isValid() && !selectionUrl.topLevelDomain().isEmpty())
         {
             menu.addAction(tr("Go to %1").arg(text), [=](){
-                emit openInNewTabRequest(selectionUrl, true);
+                emit openInNewTab(selectionUrl);
             });
         }
 
@@ -261,7 +289,7 @@ void WebView::showContextMenu(const QPoint &globalPos, const QPoint &relativePos
     menu.exec(globalPos);
 }
 
-void WebView::contextMenuEvent(QContextMenuEvent */*event*/)
+void WebView::contextMenuEvent(QContextMenuEvent * /*event*/)
 {
 }
 
@@ -271,7 +299,12 @@ void WebView::onFullScreenRequested(QWebEngineFullScreenRequest request)
     request.accept();
 }
 
-void WebView::wheelEvent(QWheelEvent *event)
+void WebView::setViewFocusProxy(QWidget *w)
+{
+    m_viewFocusProxy = w;
+}
+
+void WebView::_wheelEvent(QWheelEvent *event)
 {
     auto keyModifiers = QApplication::keyboardModifiers();
     if (keyModifiers & Qt::ControlModifier)
@@ -292,7 +325,8 @@ void WebView::wheelEvent(QWheelEvent *event)
             return;
         }
     }
-    QWebEngineView::wheelEvent(event);
+
+    //QWebEngineView::wheelEvent(event);
 }
 
 QWebEngineView *WebView::createWindow(QWebEnginePage::WebWindowType type)
@@ -302,7 +336,7 @@ QWebEngineView *WebView::createWindow(QWebEnginePage::WebWindowType type)
         case QWebEnginePage::WebBrowserWindow:    // Open a new window
         {
             MainWindow *win = m_privateView ? sBrowserApplication->getNewPrivateWindow() : sBrowserApplication->getNewWindow();
-            return win->getTabWidget()->currentWebView();
+            return win->getTabWidget()->currentWebWidget()->view();
         }	
         case QWebEnginePage::WebBrowserBackgroundTab:
         case QWebEnginePage::WebBrowserTab:
@@ -315,8 +349,13 @@ QWebEngineView *WebView::createWindow(QWebEnginePage::WebWindowType type)
             const bool switchToNewTab = (type == QWebEnginePage::WebBrowserTab
                                          && !sBrowserApplication->getSettings()->getValue(BrowserSetting::OpenAllTabsInBackground).toBool());
 
-            if (MainWindow *mw = dynamic_cast<MainWindow*>(obj))
-                return mw->getNewTabWebView(switchToNewTab);
+            if (MainWindow *mw = qobject_cast<MainWindow*>(obj))
+            {
+                if (switchToNewTab)
+                    return mw->getTabWidget()->newTab()->view();
+
+                return mw->getTabWidget()->newBackgroundTab()->view();
+            }
             break;
         }
         case QWebEnginePage::WebDialog:     // Open a web dialog
@@ -352,3 +391,8 @@ void WebView::dropEvent(QDropEvent *event)
     QWebEngineView::dropEvent(event);
 }
 
+void WebView::resizeEvent(QResizeEvent * /*event*/)
+{
+    if (QWidget *viewFocusProxy = getViewFocusProxy())
+        viewFocusProxy->setGeometry(rect());
+}

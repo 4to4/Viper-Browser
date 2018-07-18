@@ -13,6 +13,7 @@ class FaviconStorage;
 class MainWindow;
 class QMenu;
 class WebView;
+class WebWidget;
 
 /**
  * @struct ClosedTabInfo
@@ -52,11 +53,11 @@ public:
     /// Constructs the browser tab widget
     explicit BrowserTabWidget(std::shared_ptr<Settings> settings, FaviconStorage *faviconStore, bool privateMode, QWidget *parent = nullptr);
 
-    /// Returns a pointer to the current web view
-    WebView *currentWebView() const;
+    /// Returns a pointer to the current web widget
+    WebWidget *currentWebWidget() const;
 
     /// Returns the web view at the given tab index, or a nullptr if tabIndex is invalid
-    WebView *getWebView(int tabIndex) const;
+    WebWidget *getWebWidget(int tabIndex) const;
 
     /// Filters events for the watched object
     bool eventFilter(QObject *watched, QEvent *event);
@@ -68,11 +69,11 @@ public:
     bool isTabPinned(int tabIndex) const;
 
 signals:
-    /// Emitted when a new tab is created, passing along a pointer to the associated web view
-    void newTabCreated(WebView *view);
+    /// Emitted when a new tab is created, passing along a pointer to the associated web widget
+    void newTabCreated(WebWidget *view);
 
-    /// Emitted when a tab containing the given view is being closed
-    void tabClosing(WebView *view);
+    /// Emitted when a tab containing the given web widget is being closed
+    void tabClosing(WebWidget *view);
 
     /// Emitted when the current view has made progress loading its page. The range of value is [0,100]
     void loadProgress(int value);
@@ -97,19 +98,36 @@ public slots:
     void duplicateTab(int index);
 
     /**
-     * @brief Creates a new tab, assigning a WebView as its associated widget.
-     * @param makeCurrent If true, the TabWidget's active tab will be switched to this new tab
-     * @param skipHomePage If true, the home page will not be loaded.
-     * @param specificIndex If the given index is >= 0, the tab will be inserted at that index
-     * @return A pointer to the tab's WebView
+     * @brief Creates a new tab, assigning to it a \ref WebWidget.
+     * @return A pointer to the tab's WebWidget
      */
-    WebView *newTab(bool makeCurrent = false, bool skipHomePage = false, int specificIndex = -1);
+    WebWidget *newTab();
+
+    /**
+     * @brief Creates a new tab with a \ref WebWidget at the given index
+     * @param index The index at which, if valid, the tab will be inserted.
+     * @return A pointer to the tab's WebWidget
+     */
+    WebWidget *newTabAtIndex(int index);
+
+    /// Creates a new tab in the background, returning a pointer to its \ref WebWidget
+    WebWidget *newBackgroundTab();
+
+    /**
+     * @brief Creates a new tab in the background, with a \ref WebWidget at the given index
+     * @param index The index at which, if valid, the tab will be inserted.
+     * @return A pointer to the tab's WebWidget
+     */
+    WebWidget *newBackgroundTabAtIndex(int index);
 
     /// Called when the icon for a web view has changed
     void onIconChanged();
 
     /// Spawns a new browser tab, loading the given URL
-    void openLinkInNewTab(const QUrl &url, bool makeCurrent = false);
+    void openLinkInNewTab(const QUrl &url);
+
+    /// Spawns a new browser tab in the background, loading the given URL
+    void openLinkInNewBackgroundTab(const QUrl &url);
 
     /// Opens the given link in a new browser window, and sets the window to private mode if requested
     void openLinkInNewWindow(const QUrl &url, bool privateWindow);
@@ -145,10 +163,11 @@ private slots:
     /// Resets the items in the back and forward button menus, populating them with the current tab's history
     void resetHistoryButtonMenus(bool ok);
 
-    /// Displays a context menu for the current web view
-    void showContextMenuForView();
-
 private:
+    /// Creates a new \ref WebWidget, binding its signals to the appropriate handlers, setting up properties of the widget, etc.
+    /// and returning a pointer to the widget. Used during creation of a new tab
+    WebWidget *createWebWidget();
+
     /// Saves the tab at the given index before closing it
     void saveTab(int index);
 
@@ -162,8 +181,8 @@ private:
     /// Private browsing flag
     bool m_privateBrowsing;
 
-    /// Active web view
-    WebView *m_activeView;
+    /// Active web widget
+    WebWidget *m_activeView;
 
     /// Custom tab bar
     BrowserTabBar *m_tabBar;

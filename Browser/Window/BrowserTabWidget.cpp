@@ -6,6 +6,7 @@
 #include "MainWindow.h"
 #include "WebPage.h"
 #include "WebView.h"
+#include "WebWidget.h"
 
 #include <algorithm>
 #include <QDesktopWidget>
@@ -46,6 +47,8 @@ BrowserTabWidget::BrowserTabWidget(std::shared_ptr<Settings> settings, FaviconSt
     m_mainWindow(qobject_cast<MainWindow*>(parent)),
     m_closedTabs()
 {
+    setObjectName(QLatin1String("tabWidget"));
+
     // Set tab bar
     setTabBar(m_tabBar);
 
@@ -58,24 +61,24 @@ BrowserTabWidget::BrowserTabWidget(std::shared_ptr<Settings> settings, FaviconSt
     connect(this, &BrowserTabWidget::currentChanged, this, &BrowserTabWidget::onCurrentChanged);
 
     connect(m_tabBar, &BrowserTabBar::duplicateTabRequest, this, &BrowserTabWidget::duplicateTab);
-    connect(m_tabBar, &BrowserTabBar::newTabRequest, [=](){ newTab(); });
+    connect(m_tabBar, &BrowserTabBar::newTabRequest, [=](){ newBackgroundTab(); });
     connect(m_tabBar, &BrowserTabBar::reloadTabRequest, [=](int index){
-        if (WebView *view = getWebView(index))
+        if (WebWidget *view = getWebWidget(index))
             view->reload();
     });
 
     QCoreApplication::instance()->installEventFilter(this);
 }
 
-WebView *BrowserTabWidget::currentWebView() const
+WebWidget *BrowserTabWidget::currentWebWidget() const
 {
-    return qobject_cast<WebView*>(currentWidget());
+    return qobject_cast<WebWidget*>(currentWidget());
 }
 
-WebView *BrowserTabWidget::getWebView(int tabIndex) const
+WebWidget *BrowserTabWidget::getWebWidget(int tabIndex) const
 {
     if (QWidget *item = widget(tabIndex))
-        return qobject_cast<WebView*>(item);
+        return qobject_cast<WebWidget*>(item);
     return nullptr;
 }
 
@@ -83,34 +86,6 @@ bool BrowserTabWidget::eventFilter(QObject *watched, QEvent *event)
 {
     switch (event->type())
     {
-        case QEvent::ChildAdded:
-        {
-            if (WebView *view = qobject_cast<WebView*>(watched))
-            {
-                if (qobject_cast<MainWindow*>(view->window()) != m_mainWindow)
-                    return false;
-
-                QChildEvent *childAddedEvent = static_cast<QChildEvent*>(event);
-                if (QObject *child = childAddedEvent->child())
-                    child->installEventFilter(this);
-            }
-            break;
-        }
-        case QEvent::ContextMenu:
-        {
-            if (WebView *view = qobject_cast<WebView*>(watched))
-            {
-                if (qobject_cast<MainWindow*>(view->window()) != m_mainWindow)
-                    return false;
-
-                QContextMenuEvent *contextMenuEvent = static_cast<QContextMenuEvent*>(event);
-                m_contextMenuPosGlobal = contextMenuEvent->globalPos();
-                m_contextMenuPosRelative = contextMenuEvent->pos();
-                QTimer::singleShot(10, this, &BrowserTabWidget::showContextMenuForView);
-                return true;
-            }
-            break;
-        }
         case QEvent::MouseMove:
         {
             if (m_mainWindow && m_mainWindow->isFullScreen())
@@ -133,7 +108,7 @@ bool BrowserTabWidget::eventFilter(QObject *watched, QEvent *event)
                     m_mainWindow->resize(winSize);
 
                     setMaximumWidth(winSize.width());
-                    currentWebView()->setMaximumWidth(winSize.width());
+                    currentWebWidget()->setMaximumWidth(winSize.width());
                 }
             });
 
@@ -170,32 +145,27 @@ bool BrowserTabWidget::isTabPinned(int tabIndex) const
     return m_tabBar->isTabPinned(tabIndex);
 }
 
-void BrowserTabWidget::showContextMenuForView()
-{
-    currentWebView()->showContextMenu(m_contextMenuPosGlobal, m_contextMenuPosRelative);
-}
-
 void BrowserTabWidget::reopenLastTab()
 {
     if (m_closedTabs.empty())
         return;
 
     auto &tabInfo = m_closedTabs.front();
-    WebView *view = newTab(false, false, tabInfo.index);
-    view->load(tabInfo.url);
+    WebWidget *ww = newBackgroundTabAtIndex(tabInfo.index);
+    ww->load(tabInfo.url);
     QDataStream historyStream(&tabInfo.pageHistory, QIODevice::ReadWrite);
-    historyStream >> *(view->history());
+    historyStream >> *(ww->history());
 
     m_closedTabs.pop_front();
 }
 
 void BrowserTabWidget::saveTab(int index)
 {
-    WebView *view = getWebView(index);
-    if (!view)
+    WebWidget *ww = getWebWidget(index);
+    if (!ww)
         return;
 
-    ClosedTabInfo tabInfo(index, view);
+    ClosedTabInfo tabInfo(index, ww->view());
     m_closedTabs.push_front(tabInfo);
 
     while (m_closedTabs.size() > 30)
@@ -204,23 +174,21 @@ void BrowserTabWidget::saveTab(int index)
 
 void BrowserTabWidget::closeTab(int index)
 {
-    int numTabs = count();
+    const int numTabs = count();
     if (index < 0 || numTabs == 1 || index >= numTabs)
         return;
 
     saveTab(index);
-    WebView *view = getWebView(index);
-    emit tabClosing(view);
-
-    view->deleteLater();
+    WebWidget *ww = getWebWidget(index);
+    emit tabClosing(ww);
 
     // If closed tab was the active tab, set current to opposite direction of the last active tab (if possible)
     if (index == m_currentTabIndex)
     {
         if (index == 0)
             setCurrentIndex(1);
-        else if (index == count() - 1)
-            setCurrentIndex(count() - 2);
+        else if (index == numTabs - 1)
+            setCurrentIndex(numTabs - 2);
         else
         {
             int nextIndex = (m_lastTabIndex > index ? index - 1 : index + 1);
@@ -235,6 +203,8 @@ void BrowserTabWidget::closeTab(int index)
     }
 
     removeTab(index);
+
+    delete ww;
 }
 
 void BrowserTabWidget::closeCurrentTab()
@@ -244,107 +214,135 @@ void BrowserTabWidget::closeCurrentTab()
 
 void BrowserTabWidget::duplicateTab(int index)
 {
-    if (WebView *view = getWebView(index))
-        openLinkInNewTab(view->url(), false);
+    if (WebWidget *ww = getWebWidget(index))
+        openLinkInNewBackgroundTab(ww->url());
 }
 
-WebView *BrowserTabWidget::newTab(bool makeCurrent, bool skipHomePage, int specificIndex)
+WebWidget *BrowserTabWidget::createWebWidget()
 {
-    WebView *view = new WebView(m_privateBrowsing, parentWidget());
-    view->installEventFilter(this);
-
-    QString tabLabel;
-    if (!skipHomePage)
-    {
-        auto newTabPage = m_settings->getValue(BrowserSetting::NewTabsLoadHomePage).toBool() ? HomePage : BlankPage;
-        switch (newTabPage)
-        {
-            case HomePage:
-                view->load(QUrl::fromUserInput(m_settings->getValue(BrowserSetting::HomePage).toString()));
-                tabLabel = tr("Home Page");
-                break;
-            case BlankPage:
-                view->loadBlankPage();
-                tabLabel = tr("New Tab");
-                break;
-        }
-    }
+    WebWidget *ww = new WebWidget(m_privateBrowsing, this);
+    ww->setupView();
 
     // Connect web view signals to functionalty
-    connect(view, &WebView::iconChanged,            this, &BrowserTabWidget::onIconChanged);
-    connect(view, &WebView::loadFinished,           this, &BrowserTabWidget::resetHistoryButtonMenus);
-    connect(view, &WebView::loadProgress,           this, &BrowserTabWidget::onLoadProgress);
-    connect(view, &WebView::openRequest,            this, &BrowserTabWidget::loadUrl);
-    connect(view, &WebView::openInNewTabRequest,    this, &BrowserTabWidget::openLinkInNewTab);
-    connect(view, &WebView::openInNewWindowRequest, this, &BrowserTabWidget::openLinkInNewWindow);
-    connect(view, &WebView::titleChanged,           this, &BrowserTabWidget::onTitleChanged);
-    connect(view, &WebView::viewCloseRequested,     this, &BrowserTabWidget::onViewCloseRequested);
-    connect(view, &WebView::fullScreenRequested, m_mainWindow, &MainWindow::onToggleFullScreen);
-
-    connect(view, &WebView::loadStarted, [view](){
-        AdBlockManager::instance().loadStarted(view->url());
-    });
+    connect(ww, &WebWidget::iconChanged,            this, &BrowserTabWidget::onIconChanged);
+    connect(ww, &WebWidget::loadFinished,           this, &BrowserTabWidget::resetHistoryButtonMenus);
+    connect(ww, &WebWidget::loadProgress,           this, &BrowserTabWidget::onLoadProgress);
+    connect(ww, &WebWidget::openRequest,            this, &BrowserTabWidget::loadUrl);
+    connect(ww, &WebWidget::openInNewTab,           this, &BrowserTabWidget::openLinkInNewTab);
+    connect(ww, &WebWidget::openInNewBackgroundTab, this, &BrowserTabWidget::openLinkInNewBackgroundTab);
+    connect(ww, &WebWidget::openInNewWindowRequest, this, &BrowserTabWidget::openLinkInNewWindow);
+    connect(ww, &WebWidget::titleChanged,           this, &BrowserTabWidget::onTitleChanged);
+    connect(ww, &WebWidget::closeRequest,           this, &BrowserTabWidget::onViewCloseRequested);
 
     if (!m_privateBrowsing)
     {
-        connect(view, &WebView::iconUrlChanged, [=](const QUrl &url) {
-            m_faviconStore->updateIcon(url.toString(QUrl::FullyEncoded), view->url().toString(), view->icon());
+        connect(ww, &WebWidget::iconUrlChanged, [=](const QUrl &url) {
+            m_faviconStore->updateIcon(url.toString(QUrl::FullyEncoded), ww->url().toString(), ww->getIcon());
         });
     }
 
-    if (specificIndex >= 0)
+    auto newTabPage = m_settings->getValue(BrowserSetting::NewTabsLoadHomePage).toBool() ? HomePage : BlankPage;
+    switch (newTabPage)
     {
-        if (specificIndex > count())
-            specificIndex = count();
+        case HomePage:
+            ww->load(QUrl::fromUserInput(m_settings->getValue(BrowserSetting::HomePage).toString()));
+            break;
+        case BlankPage:
+            ww->loadBlankPage();
+            break;
+    }
 
-        specificIndex = insertTab(specificIndex, view, tabLabel);
-        if (specificIndex < m_nextTabIndex)
+    return ww;
+}
+
+WebWidget *BrowserTabWidget::newTab()
+{
+    return newTabAtIndex(m_nextTabIndex);
+}
+
+WebWidget *BrowserTabWidget::newTabAtIndex(int index)
+{
+    WebWidget *ww = createWebWidget();
+
+    if (index >= 0)
+    {
+        if (index > count())
+            index = count();
+
+        index = insertTab(index, ww, QLatin1String("New Tab"));
+        if (index <= m_nextTabIndex)
             ++m_nextTabIndex;
     }
     else
-        m_nextTabIndex = insertTab(m_nextTabIndex, view, tabLabel) + 1;
+        m_nextTabIndex = insertTab(m_nextTabIndex, ww, QLatin1String("New Tab")) + 1;
 
-    if (makeCurrent)
-    {
-        m_activeView = view;
-        setCurrentWidget(view);
-    }
-    else
-    {
-        view->resize(currentWidget()->size());
-        view->show();
-    }
+    m_activeView = ww;
+    setCurrentWidget(ww);
 
     if (count() == 1)
     {
-        m_activeView = view;
+        m_activeView = ww;
         emit currentChanged(currentIndex());
     }
 
-    emit newTabCreated(view);
-    return view;
+    emit newTabCreated(ww);
+    return ww;
+}
+
+WebWidget *BrowserTabWidget::newBackgroundTab()
+{
+    return newBackgroundTabAtIndex(m_nextTabIndex);
+}
+
+WebWidget *BrowserTabWidget::newBackgroundTabAtIndex(int index)
+{
+    WebWidget *ww = createWebWidget();
+
+    if (index >= 0)
+    {
+        if (index > count())
+            index = count();
+
+        index = insertTab(index, ww, QLatin1String("New Tab"));
+        if (index <= m_nextTabIndex)
+            ++m_nextTabIndex;
+    }
+    else
+        m_nextTabIndex = insertTab(m_nextTabIndex, ww, QLatin1String("New Tab")) + 1;
+
+    ww->resize(currentWidget()->size());
+    ww->view()->resize(ww->size());
+    ww->show();
+
+    emit newTabCreated(ww);
+    return ww;
 }
 
 void BrowserTabWidget::onIconChanged()
 {
-    WebView *view = qobject_cast<WebView*>(sender());
-    int tabIndex = indexOf(view);
-    if (tabIndex < 0 || !view)
+    WebWidget *ww = qobject_cast<WebWidget*>(sender());
+    int tabIndex = indexOf(ww);
+    if (tabIndex < 0 || !ww)
         return;
 
-    QIcon icon = view->icon();
+    QIcon icon = ww->getIcon();
     if (icon.isNull())
-        icon = m_faviconStore->getFavicon(view->url());
+        icon = m_faviconStore->getFavicon(ww->url());
 
     setTabIcon(tabIndex, icon);
 }
 
 
-void BrowserTabWidget::openLinkInNewTab(const QUrl &url, bool makeCurrent)
+void BrowserTabWidget::openLinkInNewTab(const QUrl &url)
 {
-    // Create view, load home page, add view to tab widget
-    WebView *view = newTab(makeCurrent, true);
-    view->load(url);
+    WebWidget *ww = newTab();
+    ww->load(url);
+}
+
+void BrowserTabWidget::openLinkInNewBackgroundTab(const QUrl &url)
+{
+    WebWidget *ww = newBackgroundTab();
+    ww->load(url);
 }
 
 void BrowserTabWidget::openLinkInNewWindow(const QUrl &url, bool privateWindow)
@@ -357,7 +355,7 @@ void BrowserTabWidget::openLinkInNewWindow(const QUrl &url, bool privateWindow)
 
 void BrowserTabWidget::loadUrl(const QUrl &url)
 {
-    currentWebView()->load(url);
+    currentWebWidget()->load(url);
 }
 
 void BrowserTabWidget::setNavHistoryMenus(QMenu *backMenu, QMenu *forwardMenu)
@@ -371,29 +369,29 @@ void BrowserTabWidget::setNavHistoryMenus(QMenu *backMenu, QMenu *forwardMenu)
 
 void BrowserTabWidget::resetZoomCurrentView()
 {
-    if (WebView *view = currentWebView())
-        view->resetZoom();
+    if (WebWidget *ww = currentWebWidget())
+        ww->view()->resetZoom();
 }
 
 void BrowserTabWidget::zoomInCurrentView()
 {
-    if (WebView *view = currentWebView())
-        view->zoomIn();
+    if (WebWidget *ww = currentWebWidget())
+        ww->view()->zoomIn();
 }
 
 void BrowserTabWidget::zoomOutCurrentView()
 {
-    if (WebView *view = currentWebView())
-        view->zoomOut();
+    if (WebWidget *ww = currentWebWidget())
+        ww->view()->zoomOut();
 }
 
 void BrowserTabWidget::onCurrentChanged(int index)
 {
-    WebView *view = getWebView(index);
-    if (!view)
+    WebWidget *ww = getWebWidget(index);
+    if (!ww)
         return;
 
-    m_activeView = view;
+    m_activeView = ww;
 
     resetHistoryButtonMenus(true);
 
@@ -403,21 +401,21 @@ void BrowserTabWidget::onCurrentChanged(int index)
 
     m_tabBar->updateGeometry();
 
-    emit loadProgress(view->getProgress());
+    emit loadProgress(ww->getProgress());
     emit viewChanged(index);
 }
 
 void BrowserTabWidget::onLoadProgress(int progress)
 {
-    WebView *view = qobject_cast<WebView*>(sender());
-    if (view == currentWebView())
+    WebWidget *ww = qobject_cast<WebWidget*>(sender());
+    if (ww == currentWebWidget())
         emit loadProgress(progress);
 }
 
 void BrowserTabWidget::onTitleChanged(const QString &title)
 {
-    WebView *view = qobject_cast<WebView*>(sender());
-    int viewTabIndex = indexOf(view);
+    WebWidget *ww = qobject_cast<WebWidget*>(sender());
+    int viewTabIndex = indexOf(ww);
     if (viewTabIndex >= 0)
     {
         setTabText(viewTabIndex, title);
@@ -427,8 +425,8 @@ void BrowserTabWidget::onTitleChanged(const QString &title)
 
 void BrowserTabWidget::onViewCloseRequested()
 {
-    WebView *view = qobject_cast<WebView*>(sender());
-    closeTab(indexOf(view));
+    WebWidget *ww = qobject_cast<WebWidget*>(sender());
+    closeTab(indexOf(ww));
 }
 
 void BrowserTabWidget::resetHistoryButtonMenus(bool /*ok*/)
@@ -437,7 +435,7 @@ void BrowserTabWidget::resetHistoryButtonMenus(bool /*ok*/)
     m_forwardMenu->clear();
 
     int maxMenuSize = 10;
-    QWebEngineHistory *hist = m_activeView->page()->history();
+    QWebEngineHistory *hist = m_activeView->history();
     QAction *histAction = nullptr, *prevAction = nullptr;
 
     // Setup back button history menu
