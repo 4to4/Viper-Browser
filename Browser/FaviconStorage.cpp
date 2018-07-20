@@ -123,7 +123,6 @@ void FaviconStorage::updateIcon(const QString &iconHRef, QString pageUrl, QIcon 
             m_accessMgr = BrowserApplication::instance()->getNetworkAccessManager();
 
         QNetworkRequest request(QUrl::fromUserInput(iconHRef));
-		request.setSslConfiguration(QSslConfiguration::defaultConfiguration());
         m_reply = m_accessMgr->get(request);
         if (m_reply->isFinished())
             onReplyFinished();

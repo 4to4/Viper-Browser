@@ -56,8 +56,6 @@ void InternalDownloadItem::setupItem()
 
     QString fileName = fileNameDefault;
 
-	qDebug() << "Downloading " << fileName << " from " << m_reply->url().toString();
-
     // Create file on disk
     m_file.setFileName(fileName);
     QFileInfo localFileInfo(m_file.fileName());

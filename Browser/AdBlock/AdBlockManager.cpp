@@ -99,7 +99,6 @@ void AdBlockManager::updateSubscriptions()
             if (srcUrl.isValid() && !srcUrl.isLocalFile())
             {
                 QNetworkRequest request;
-				request.setSslConfiguration(QSslConfiguration::defaultConfiguration());
                 request.setUrl(srcUrl);
 
                 InternalDownloadItem *item = sBrowserApplication->getDownloadManager()->downloadInternal(request, m_subscriptionDir, false, true);
@@ -125,12 +124,10 @@ void AdBlockManager::installResource(const QUrl &url)
         return;
 
     QNetworkRequest request;
-	request.setSslConfiguration(QSslConfiguration::defaultConfiguration());
     request.setUrl(url);
 
     DownloadManager *downloadMgr = sBrowserApplication->getDownloadManager();
-    InternalDownloadItem *item = downloadMgr->downloadInternal(request, 
-		m_subscriptionDir + QDir::separator() + QString("resources"), false);
+    InternalDownloadItem *item = downloadMgr->downloadInternal(request, m_subscriptionDir + QDir::separator() + QString("resources"), false);
     connect(item, &InternalDownloadItem::downloadFinished, this, &AdBlockManager::loadResourceFile);
 }
 
@@ -140,7 +137,6 @@ void AdBlockManager::installSubscription(const QUrl &url)
         return;
 
     QNetworkRequest request;
-	request.setSslConfiguration(QSslConfiguration::defaultConfiguration());
     request.setUrl(url);
 
     DownloadManager *downloadMgr = sBrowserApplication->getDownloadManager();
