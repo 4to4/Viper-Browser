@@ -34,12 +34,14 @@ BrowserApplication::BrowserApplication(int &argc, char **argv) :
 {
     QCoreApplication::setOrganizationName(QLatin1String("Vaccarelli"));
     QCoreApplication::setApplicationName(QLatin1String("Viper Browser"));
-    QCoreApplication::setApplicationVersion(QLatin1String("0.7"));
+    QCoreApplication::setApplicationVersion(QLatin1String("0.8"));
 
 	setAttribute(Qt::AA_UseSoftwareOpenGL);
     setAttribute(Qt::AA_EnableHighDpiScaling, true);
     setAttribute(Qt::AA_UseHighDpiPixmaps, true);
     setAttribute(Qt::AA_DontShowIconsInMenus, false);
+
+    setWindowIcon(QIcon(QLatin1String(":/logo.png")));
 
     // Get default profile and private profile
     auto webProfile = QWebEngineProfile::defaultProfile();

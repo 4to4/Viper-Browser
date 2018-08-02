@@ -777,41 +777,33 @@ void AdBlockManager::extractFilters()
     }
 
     // Remove bad filters from m_allowFilters, m_blockFilters, m_genericHideFilters, m_cspFilters
-    for (std::vector<AdBlockFilter*>::iterator it = m_allowFilters.begin(); it != m_allowFilters.end(); ++it)
+    for (auto it = m_allowFilters.begin(); it != m_allowFilters.end();)
     {
-		if (badFilters.contains((*it)->getRule()))
-		{
-			auto itCpy = it;
-			--it;
-			m_allowFilters.erase(itCpy);
-		}
+        if (badFilters.contains((*it)->getRule()))
+            it = m_allowFilters.erase(it);
+        else
+            ++it;
     }
-    for (std::vector<AdBlockFilter*>::iterator it = m_blockFilters.begin(); it != m_blockFilters.end(); ++it)
+    for (auto it = m_blockFilters.begin(); it != m_blockFilters.end();)
     {
-		if (badFilters.contains((*it)->getRule()))
-		{
-			auto itCpy = it;
-			--it;
-			m_blockFilters.erase(itCpy);
-		}
+        if (badFilters.contains((*it)->getRule()))
+            it = m_blockFilters.erase(it);
+        else
+            ++it;
     }
-    for (std::vector<AdBlockFilter*>::iterator it = m_cspFilters.begin(); it != m_cspFilters.end(); ++it)
+    for (auto it = m_cspFilters.begin(); it != m_cspFilters.end();)
     {
-		if (badFilters.contains((*it)->getRule()))
-		{
-			auto itCpy = it;
-			--it;
-			m_cspFilters.erase(itCpy);
-		}
+        if (badFilters.contains((*it)->getRule()))
+            it = m_cspFilters.erase(it);
+        else
+            ++it;
     }
-    for (std::vector<AdBlockFilter*>::iterator it = m_genericHideFilters.begin(); it != m_genericHideFilters.end(); ++it)
+    for (auto it = m_genericHideFilters.begin(); it != m_genericHideFilters.end();)
     {
-		if (badHideFilters.contains((*it)->getRule()))
-		{
-			auto itCpy = it;
-			--it;
-			m_genericHideFilters.erase(itCpy);
-		}
+        if (badHideFilters.contains((*it)->getRule()))
+            it = m_genericHideFilters.erase(it);
+        else
+            ++it;
     }
 
     // Parse stylesheet exceptions

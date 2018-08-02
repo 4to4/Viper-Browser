@@ -20,16 +20,14 @@ class QLabel;
 class QNetworkReply;
 class QToolButton;
 class QWebInspector;
-class AdBlockWidget;
 class BookmarkDialog;
 class BookmarkWidget;
 class BrowserTabWidget;
 class ClearHistoryDialog;
 class FaviconStorage;
-class Preferences;
+class HttpRequest;
 class SearchEngineLineEdit;
 class URLLineEdit;
-class UserScriptWidget;
 class WebView;
 class WebWidget;
 
@@ -105,6 +103,9 @@ public slots:
 
     /// Attempts to load the URL into the active tab
     void loadUrl(const QUrl &url);
+
+    /// Loads the HTTP request into the active web widget
+    void loadHttpRequest(const HttpRequest &request);
 
     /// Attempts to load the URL into a new browsing tab
     void openLinkNewTab(const QUrl &url);
@@ -239,17 +240,8 @@ private:
     /// List of web action proxies that bind menu bar actions to web page actions
     QList<WebActionProxy*> m_webActions;
 
-    /// Preferences window
-    Preferences *m_preferences;
-
     /// Dialog that is shown when a bookmark is added or is being modified by the user
     BookmarkDialog *m_bookmarkDialog;
-
-    /// User script management widget
-    UserScriptWidget *m_userScriptWidget;
-
-    /// Advertisement blocking management widget
-    AdBlockWidget *m_adBlockWidget;
 
     /// Stores javascript code that attempts to extract favicon path from a page
     QString m_faviconScript;

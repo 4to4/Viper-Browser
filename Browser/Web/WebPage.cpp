@@ -1,5 +1,7 @@
 #include "AdBlockManager.h"
+#include "AuthDialog.h"
 #include "BrowserApplication.h"
+#include "CommonUtil.h"
 #include "ExtStorage.h"
 #include "SecurityManager.h"
 #include "Settings.h"
@@ -7,6 +9,7 @@
 #include "UserScriptManager.h"
 #include "WebPage.h"
 
+#include <QAuthenticator>
 #include <QFile>
 #include <QMessageBox>
 #include <QTimer>
@@ -43,11 +46,18 @@ void WebPage::setupSlots()
     channel->registerObject(QLatin1String("extStorage"), sBrowserApplication->getExtStorage());
     setWebChannel(channel);
 
-    connect(this, &WebPage::loadProgress,               this, &WebPage::onLoadProgress);
-    connect(this, &WebPage::loadFinished,               this, &WebPage::onLoadFinished);
-    connect(this, &WebPage::urlChanged,                 this, &WebPage::onMainFrameUrlChanged);
-    connect(this, &WebPage::featurePermissionRequested, this, &WebPage::onFeaturePermissionRequested);
-    connect(this, &WebPage::renderProcessTerminated,    this, &WebPage::onRenderProcessTerminated);
+    connect(this, &WebPage::authenticationRequired,      this, &WebPage::onAuthenticationRequired);
+    connect(this, &WebPage::proxyAuthenticationRequired, this, &WebPage::onProxyAuthenticationRequired);
+    connect(this, &WebPage::loadProgress,                this, &WebPage::onLoadProgress);
+    connect(this, &WebPage::loadFinished,                this, &WebPage::onLoadFinished);
+    connect(this, &WebPage::urlChanged,                  this, &WebPage::onMainFrameUrlChanged);
+    connect(this, &WebPage::featurePermissionRequested,  this, &WebPage::onFeaturePermissionRequested);
+    connect(this, &WebPage::renderProcessTerminated,     this, &WebPage::onRenderProcessTerminated);
+
+#if (QTWEBENGINECORE_VERSION >= QT_VERSION_CHECK(5, 11, 0))
+    connect(this, &WebPage::quotaRequested, this, &WebPage::onQuotaRequested);
+    connect(this, &WebPage::registerProtocolHandlerRequested, this, &WebPage::onRegisterProtocolHandlerRequested);
+#endif
 }
 
 bool WebPage::acceptNavigationRequest(const QUrl &url, QWebEnginePage::NavigationType type, bool isMainFrame)
@@ -129,6 +139,39 @@ void WebPage::javaScriptConsoleMessage(WebPage::JavaScriptConsoleMessageLevel le
 bool WebPage::certificateError(const QWebEngineCertificateError &certificateError)
 {
     return SecurityManager::instance().onCertificateError(certificateError);
+}
+
+void WebPage::onAuthenticationRequired(const QUrl &requestUrl, QAuthenticator *authenticator)
+{
+    AuthDialog authDialog(view()->window());
+    authDialog.setMessage(tr("%1 is requesting your username and password for %2")
+                          .arg(requestUrl.host()).arg(authenticator->realm()));
+
+    if (authDialog.exec() == QDialog::Accepted)
+    {
+        authenticator->setUser(authDialog.getUsername());
+        authenticator->setPassword(authDialog.getPassword());
+    }
+    else
+    {
+        *authenticator = QAuthenticator();
+    }
+}
+
+void WebPage::onProxyAuthenticationRequired(const QUrl &/*requestUrl*/, QAuthenticator *authenticator, const QString &proxyHost)
+{
+    AuthDialog authDialog(view()->window());
+    authDialog.setMessage(tr("Authentication is required to connect to proxy %1").arg(proxyHost));
+
+    if (authDialog.exec() == QDialog::Accepted)
+    {
+        authenticator->setUser(authDialog.getUsername());
+        authenticator->setPassword(authDialog.getPassword());
+    }
+    else
+    {
+        *authenticator = QAuthenticator();
+    }
 }
 
 void WebPage::onFeaturePermissionRequested(const QUrl &securityOrigin, WebPage::Feature feature)
@@ -225,6 +268,30 @@ void WebPage::onLoadFinished(bool ok)
 
     m_needInjectAdBlockScript = true;
 }
+
+#if (QTWEBENGINECORE_VERSION >= QT_VERSION_CHECK(5, 11, 0))
+void WebPage::onQuotaRequested(QWebEngineQuotaRequest quotaRequest)
+{
+    auto response = QMessageBox::question(view()->window(), tr("Permission Request"),
+                                          tr("Allow %1 to increase its storage quota to %2?")
+                                          .arg(quotaRequest.origin().host())
+                                          .arg(CommonUtil::bytesToUserFriendlyStr(quotaRequest.requestedSize())));
+    if (response == QMessageBox::Yes)
+        quotaRequest.accept();
+    else
+        quotaRequest.reject();
+}
+
+void WebPage::onRegisterProtocolHandlerRequested(QWebEngineRegisterProtocolHandlerRequest request)
+{
+    auto response = QMessageBox::question(view()->window(), tr("Permission Request"),
+                                          tr("Allow %1 to open all %2 links?").arg(request.origin().host()).arg(request.scheme()));
+    if (response == QMessageBox::Yes)
+        request.accept();
+    else
+        request.reject();
+}
+#endif
 
 void WebPage::onRenderProcessTerminated(RenderProcessTerminationStatus terminationStatus, int exitCode)
 {

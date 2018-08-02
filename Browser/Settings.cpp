@@ -129,7 +129,7 @@ void Settings::setDefaults()
     QFileInfo settingsFileInfo(m_settings.fileName());
 
 #ifdef Q_OS_WIN
-	QDir settingsDir = QDir(QDir::homePath() + QString("\\AppData\\Local\\Vaccarelli"));
+    QDir settingsDir = QDir(QDir::homePath() + QString("\\AppData\\Local\\Vaccarelli"));
 #else
     QDir settingsDir = settingsFileInfo.absoluteDir();
 #endif

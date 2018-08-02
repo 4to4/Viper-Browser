@@ -16,6 +16,7 @@
 #include "ClearHistoryDialog.h"
 #include "HistoryManager.h"
 #include "HistoryWidget.h"
+#include "HttpRequest.h"
 #include "HTMLHighlighter.h"
 #include "Preferences.h"
 #include "SecurityManager.h"
@@ -31,6 +32,7 @@
 #include <functional>
 #include <QActionGroup>
 #include <QCloseEvent>
+#include <QDesktopWidget>
 #include <QDir>
 #include <QDragEnterEvent>
 #include <QDropEvent>
@@ -46,6 +48,7 @@
 #include <QPushButton>
 #include <QShortcut>
 #include <QStyle>
+#include <QTabBar>
 #include <QTimer>
 #include <QtGlobal>
 #include <QTabBar>
@@ -62,10 +65,7 @@ MainWindow::MainWindow(std::shared_ptr<Settings> settings, BookmarkManager *book
     m_faviconStore(faviconStore),
     m_clearHistoryDialog(nullptr),
     m_tabWidget(nullptr),
-    m_preferences(nullptr),
     m_bookmarkDialog(nullptr),
-    m_userScriptWidget(nullptr),
-    m_adBlockWidget(nullptr),
     m_faviconScript(),
     m_linkHoverLabel(nullptr)
 {
@@ -86,6 +86,9 @@ MainWindow::MainWindow(std::shared_ptr<Settings> settings, BookmarkManager *book
 
     if (m_privateWindow)
         setWindowTitle("Web Browser - Private Browsing");
+
+    const int screenWidth = sBrowserApplication->desktop()->screenGeometry().width();
+    setMaximumWidth(screenWidth);
 
     setupStatusBar();
     setupTabWidget();
@@ -109,14 +112,8 @@ MainWindow::~MainWindow()
     if (m_bookmarkUI)
         delete m_bookmarkUI;
 
-    if (m_preferences)
-        delete m_preferences;
-
     if (m_bookmarkDialog)
         delete m_bookmarkDialog;
-
-    if (m_userScriptWidget)
-        delete m_userScriptWidget;
 }
 
 bool MainWindow::isPrivate() const
@@ -137,6 +134,11 @@ void MainWindow::loadBlankPage()
 void MainWindow::loadUrl(const QUrl &url)
 {
     m_tabWidget->loadUrl(url);
+}
+
+void MainWindow::loadHttpRequest(const HttpRequest &request)
+{
+    m_tabWidget->currentWebWidget()->load(request);
 }
 
 void MainWindow::openLinkNewTab(const QUrl &url)
@@ -469,17 +471,10 @@ void MainWindow::onFindTextAction()
 
 void MainWindow::openAdBlockManager()
 {
-    if (!m_adBlockWidget)
-    {
-        m_adBlockWidget = new AdBlockWidget;
-        connect(m_adBlockWidget, &AdBlockWidget::destroyed, [=](){
-            m_adBlockWidget = nullptr;
-        });
-    }
-    m_adBlockWidget->updateBlockedCountLabel();
-    m_adBlockWidget->show();
-    m_adBlockWidget->raise();
-    m_adBlockWidget->activateWindow();
+    AdBlockWidget *adBlockWidget = new AdBlockWidget;
+    adBlockWidget->show();
+    adBlockWidget->raise();
+    adBlockWidget->activateWindow();
 }
 
 void MainWindow::openClearHistoryDialog()
@@ -495,30 +490,20 @@ void MainWindow::openClearHistoryDialog()
 
 void MainWindow::openPreferences()
 {
-    if (!m_preferences)
-    {
-        m_preferences = new Preferences(m_settings);
+    Preferences *preferences = new Preferences(m_settings);
 
-        connect(m_preferences, &Preferences::clearHistoryRequested, this, &MainWindow::openClearHistoryDialog);
-        connect(m_preferences, &Preferences::viewHistoryRequested, this, &MainWindow::onShowAllHistory);
-    }
+    connect(preferences, &Preferences::clearHistoryRequested, this, &MainWindow::openClearHistoryDialog);
+    connect(preferences, &Preferences::viewHistoryRequested,  this, &MainWindow::onShowAllHistory);
 
-    m_preferences->loadSettings();
-    m_preferences->show();
+    preferences->show();
 }
 
 void MainWindow::openUserScriptManager()
 {
-    if (!m_userScriptWidget)
-    {
-        m_userScriptWidget = new UserScriptWidget;
-        connect(m_userScriptWidget, &UserScriptWidget::destroyed, [=](){
-            m_userScriptWidget = nullptr;
-        });
-    }
-    m_userScriptWidget->show();
-    m_userScriptWidget->raise();
-    m_userScriptWidget->activateWindow();
+    UserScriptWidget *userScriptWidget = new UserScriptWidget;
+    userScriptWidget->show();
+    userScriptWidget->raise();
+    userScriptWidget->activateWindow();
 }
 
 void MainWindow::openFileInBrowser()
@@ -533,13 +518,6 @@ void MainWindow::onLoadFinished(bool ok)
     WebWidget *ww = qobject_cast<WebWidget*>(sender());
     if (!ww)
         return;
-
-    const QString pageTitle = ww->getTitle();
-    QIcon icon = ww->getIcon();
-    if (icon.isNull())
-        icon = m_faviconStore->getFavicon(ww->url());
-    updateTabIcon(icon, m_tabWidget->indexOf(ww));
-    updateTabTitle(pageTitle, m_tabWidget->indexOf(ww));
 
     if (m_tabWidget->currentWebWidget() == ww)
     {
@@ -564,7 +542,7 @@ void MainWindow::onLoadFinished(bool ok)
     const bool isBlankPage = ww->isOnBlankPage();
 
     if (!isBlankPage && !pageUrl.isEmpty())
-        historyMgr->addHistoryEntry(pageUrl, pageTitle);
+        historyMgr->addHistoryEntry(pageUrl, ww->getTitle());
 
     // Attempt to fetch the URL of the favicon from the page
     ww->page()->runJavaScript(m_faviconScript, [=](const QVariant &v) {
@@ -630,7 +608,7 @@ void MainWindow::onNewTabCreated(WebWidget *ww)
     });
     connect(ww, &WebWidget::linkHovered, this, &MainWindow::onLinkHovered);
 
-    if (WebPage *page = dynamic_cast<WebPage*>(ww->page()))
+    if (WebPage *page = ww->page())
     {
         connect(page, &WebPage::printPageRequest, this, &MainWindow::printTabContents);
     }
@@ -711,7 +689,7 @@ void MainWindow::printTabContents()
     if (!page)
     {
         if (WebWidget *currentView = m_tabWidget->currentWebWidget())
-            page = qobject_cast<WebPage*>(currentView->page());
+            page = currentView->page();
     }
     if (!page)
         return;
@@ -724,7 +702,7 @@ void MainWindow::printTabContents()
     connect(&dialog, &QPrintPreviewDialog::paintRequested, [=](QPrinter *p){
         page->print(p, [](bool){});
     });
-    dialog.exec();
+    static_cast<void>(dialog.exec());
 }
 
 void MainWindow::onClickBookmarkIcon()
@@ -803,13 +781,19 @@ void MainWindow::resizeEvent(QResizeEvent *event)
     QMainWindow::resizeEvent(event);
 
     const int winWidth = event->size().width();
-    m_tabWidget->setMaximumWidth(winWidth);
+    //m_tabWidget->setMaximumWidth(winWidth);
     ui->bookmarkBar->setMaximumWidth(winWidth);
 }
 
 void MainWindow::onLinkHovered(const QString &url)
 {
-    m_linkHoverLabel->setText(url);
+    if (!url.isEmpty())
+    {
+        QFontMetrics urlFontMetrics(m_linkHoverLabel->font());
+        m_linkHoverLabel->setText(urlFontMetrics.elidedText(url, Qt::ElideRight, std::max(ui->statusBar->width() - 12, 0)));
+    }
+    else
+        m_linkHoverLabel->setText(url);
 
     /*
     if (!urlStr.isEmpty())
