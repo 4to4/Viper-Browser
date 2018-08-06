@@ -13,7 +13,11 @@ BookmarkDialog::BookmarkDialog(BookmarkManager *bookmarkMgr, QWidget *parent) :
     m_currentUrl()
 {
     ui->setupUi(this);
-    setWindowFlags(Qt::WindowStaysOnTopHint | Qt::FramelessWindowHint);
+
+    setAttribute(Qt::WA_ShowWithoutActivating, true);
+    setAttribute(Qt::WA_X11NetWmWindowTypeCombo, true);
+    setWindowFlags(Qt::Window | Qt::WindowStaysOnTopHint | Qt::FramelessWindowHint | Qt::BypassWindowManagerHint);
+    setContentsMargins(0, 0, 0, 0);
 
     // Populate combo box with each folder in the bookmark collection
     const BookmarkNode *rootNode = m_bookmarkManager->getRoot();
@@ -38,7 +42,7 @@ BookmarkDialog::~BookmarkDialog()
 void BookmarkDialog::alignAndShow(const QRect &windowGeom, const QRect &toolbarGeom, const QRect &urlBarGeom)
 {
     QPoint dialogPos;
-    dialogPos.setX(windowGeom.x() + toolbarGeom.x() + urlBarGeom.x() + urlBarGeom.width() - width());
+    dialogPos.setX(windowGeom.x() + toolbarGeom.x() + urlBarGeom.x() + urlBarGeom.width() - (width() / 2));
     dialogPos.setY(windowGeom.y() + toolbarGeom.y() + toolbarGeom.height() + (urlBarGeom.height() * 2 / 3));
 
     move(dialogPos);
@@ -47,6 +51,7 @@ void BookmarkDialog::alignAndShow(const QRect &windowGeom, const QRect &toolbarG
 
 void BookmarkDialog::setDialogHeader(const QString &text)
 {
+    setWindowTitle(text);
     ui->labelDialogHeader->setText(text);
 }
 
@@ -91,9 +96,17 @@ void BookmarkDialog::saveAndClose()
     }   
 
 	QFuture<void> f = QtConcurrent::run([this]() {
-		// Remove bookmark and re-add it with current name, url and parent folder values
-		m_bookmarkManager->removeBookmark(m_currentUrl);
-		BookmarkNode *parentNode = (BookmarkNode*)ui->comboBoxFolder->currentData().value<void*>();
+
+        BookmarkNode *parentNode = (BookmarkNode*)ui->comboBoxFolder->currentData().value<void*>();
+        if (m_bookmarkManager->isBookmarked(m_currentUrl))
+        {
+            BookmarkNode *n = m_bookmarkManager->getBookmark(m_currentUrl);
+            if (n && n->getName() == ui->lineEditName->text() && n->getParent() == parentNode)
+                return;
+
+            m_bookmarkManager->removeBookmark(m_currentUrl);
+        }
+
 		m_bookmarkManager->appendBookmark(ui->lineEditName->text(), m_currentUrl, parentNode);
 	});
     close();

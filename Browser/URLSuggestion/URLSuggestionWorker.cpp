@@ -109,7 +109,7 @@ void URLSuggestionWorker::searchForHits()
         if (!m_working.load())
             return;
 
-        const QString &url = it.key();
+        const QString &url = it->URL.toString();
         if (hits.contains(url))
             continue;
 

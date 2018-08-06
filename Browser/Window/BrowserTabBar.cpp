@@ -41,7 +41,7 @@ BrowserTabBar::BrowserTabBar(QWidget *parent) :
     // Add "New Tab" button
     m_buttonNewTab = new QToolButton(this);
     m_buttonNewTab->setIcon(QIcon::fromTheme("folder-new"));
-    m_buttonNewTab->setStyleSheet("QToolButton:hover { border: 1px solid #666666; border-radius: 2px; } ");
+    m_buttonNewTab->setStyleSheet(QLatin1String("QToolButton:hover { border: 1px solid #666666; border-radius: 2px; } "));
     m_buttonNewTab->setToolTip(tr("New Tab"));
     m_buttonNewTab->setFixedSize(28, height() - 2);
 
@@ -427,11 +427,6 @@ void BrowserTabBar::tabInserted(int index)
 
 void BrowserTabBar::tabRemoved(int index)
 {
-    size_t unsignedIdx = static_cast<size_t>(index);
-    bool needRepaint = false;
-    if (unsignedIdx < m_tabPinMap.size())
-        needRepaint = m_tabPinMap.at(unsignedIdx);
-
     std::map<int, bool> tabPinMap;
     for (auto it : m_tabPinMap)
     {
@@ -443,9 +438,7 @@ void BrowserTabBar::tabRemoved(int index)
     m_tabPinMap = tabPinMap;
 
     QTabBar::tabRemoved(index);
-
-    if (needRepaint)
-        forceRepaint();
+    forceRepaint();
 }
 
 QSize BrowserTabBar::tabSizeHint(int index) const
