@@ -186,6 +186,7 @@ void URLSuggestionWidget::alignAndShow(const QPoint &urlBarPos, const QRect &url
     move(pos);
 
     show();
+	raise();
 }
 
 void URLSuggestionWidget::suggestForInput(const QString &text)
