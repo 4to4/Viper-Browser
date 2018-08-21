@@ -44,6 +44,7 @@ BrowserTabBar::BrowserTabBar(QWidget *parent) :
 #ifdef Q_OS_WIN
 	QFont newTabFont = m_buttonNewTab->font();
 	newTabFont.setBold(true);
+	newTabFont.setPointSize(14);
 	m_buttonNewTab->setFont(newTabFont);
 	m_buttonNewTab->setText(QLatin1String("+"));
 #else
@@ -464,7 +465,7 @@ QSize BrowserTabBar::tabSizeHint(int index) const
     if (m_tabPinMap.at(index))
     {
         QSize pinnedTabSize = iconSize();
-        pinnedTabSize.setWidth(pinnedTabSize.width() * 3 + 6);
+        pinnedTabSize.setWidth(pinnedTabSize.width() * 3 + 11);
         pinnedTabSize.setHeight(hint.height());
         return pinnedTabSize;
     }
